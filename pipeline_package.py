@@ -94,6 +94,8 @@ class LightCurve():
         self.median_detrendeded = False
         self.detrended = False
         
+        self.Prot = []
+        
         self.fnorm_detrend = None       
         
     
@@ -159,6 +161,7 @@ class LightCurve():
             count = 0
             
             while residual_rotation and count < 3:
+                self.Prot.append(Prot)
                 map_soln = build_model_SHO(bjd, fnorm_detrend, efnorm, Prot)
                 count += 1
                 fnorm_detrend -= map_soln["pred"]/1000
@@ -207,10 +210,31 @@ class LightCurve():
         return self.detrended
     
     
-    def plot_curve(self, sector=None, savefig=None):
-        ## Need to update this function
-        plt.plot(self.bjd, self.fnorm)
-        plt.show()
+    def plot_curve(self, series, ax_labels, show=True, savefig=None):
+        bjd_start = self.bjd[0]
+        series_splits = self.get_splits(series + [self.bjd])
+        nrows, ncols = len(series_splits)-1, len(series_splits[0])
+
+        fig, axs = plt.subplots(figsize=(ncols*6, nrows*3), 
+                                sharex='col', sharey='row',
+                                nrows=nrows, ncols=ncols, 
+                                gridspec_kw={"wspace":0.02, "hspace":0.05})
+
+        for i in range(nrows):
+            axs[i][0].set_ylabel(ax_labels[i])
+            for j in range(ncols):
+                bjd = series_splits[-1][j] - bjd_start
+                axs[i][j].scatter(bjd, series_splits[i][j], s=0.1)
+                axs[i][j].set_xlim(min(bjd), max(bjd))
+                axs[i][j].grid()
+
+        for j in range(ncols):
+            axs[-1][j].set_xlabel("Days since first observation")
+
+        if show:
+            plt.show()
+        if savefig:
+            plt.savefig(savefig)
 
 
 class TIC_LightCurve(LightCurve): 
@@ -269,6 +293,8 @@ def rotation_check(bjd, fnorm, efnorm):
 
 
 def bin_curve(bjd, fnorm, efnorm, bin_width=10):
+    """Bin a given lightcurve 
+    """
     bin_indeces = np.arange(0, len(bjd)+bin_width, bin_width)
     
     bin_bjd    = np.zeros(len(bin_indeces)-1)
@@ -333,6 +359,29 @@ def build_model_SHO(bjd, fnorm, efnorm, Prot):
 
 
 def find_transits(bjd, fnorm, threshold=6, max_iterations=5, **tls_kwargs):
+    """Return a list of TLS transit candidates from a given lightcurve.
+    
+    === Parameters ===
+    BJD: 1D numpy array
+        BJD of each data point in the observation timeseries
+    fnorm: 1D array
+        Normalized flux at each BJD. fnorm *must* be detrended to return 
+        sensible results
+    threshold: float
+        Threshold for a peak in SED to be considered a transit candidate
+    max_iterations: int
+        Maximum number of TLS iterations to run, sucessively masking each 
+        significant transit candidate
+    **tls_kwargs:
+        Keyword arguments to pass into the tls run
+        
+    === Returns ===
+    result_list: List[TLS result]
+        List of results for transit candidates with sufficient SED, see
+        transitleastsquares.readthedocs.io/en/latest/Python interface.html#return-values
+        for more information
+    """
+    
     # All points are in the transit
     intransit = np.zeros(len(bjd), dtype=bool)
     
@@ -374,14 +423,31 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, **tls_kwargs):
 
 
 def get_tess_data(tic, minsector=1, maxsector=55):
-    """Return timeseries arrays based on the tic
+    """Extract TESS data for a given tic and generate timeseries for 
+    observations between minsector and maxsector. A quality cut and a sigma
+    clip are performed before returning the timeseries:
     
-    Series Needed:
-    BJD, fnorm, sectors, qual_flags, texp
-    
-    Things to add:
-    Sigma Clip
-    Use 20 Second data yes or no
+    === Parameters === 
+    tic: int or str
+        TIC to retrieve data for
+    minsector: int
+        Minimum sector to look from
+    maxsector: int
+        Maximum sector to look too
+
+    === Returns ===
+    BJD: 1D numpy array
+        BJD observation time of each data point
+    fnorm: 1D numpy array 
+        Normalized flux observed by TESS
+    sectors: 1D numpy array 
+        Sector which each data point was observed in
+    qual_flags: 1D numpy array 
+        Quality flags for each data point
+    texp: 1D numpy array 
+        Exposure time of each data point
+
+    NB: Requires internet connection!
     """
     # Get all the filenames
     filenames = get_tess_filenames(tic, minsector=minsector, 
@@ -436,8 +502,25 @@ def get_tess_data(tic, minsector=1, maxsector=55):
     
 
 def get_tess_filenames(tic, minsector=1, maxsector=55):
-    """Retrive files associated with a specific TIC between 
-    minsector and maxsector
+    """Retrive files associated with a specific TIC between minsector and 
+    maxsector. This function will only retrieve the filenames of lightcurves
+    with a two minute cadence hosted at:
+    
+    https://archive.stsci.edu/missions/tess/tid/
+    
+    === Parameters ===
+    tic: int or str
+        TIC to retrieve filenames for
+    minsector: int
+        Minimum sector to look from
+    maxsector: int
+        Maximum sector to look too
+        
+    === Returns ===
+    filenames: list
+        The paths to all 2 minute cadence lightcurves
+        
+    NB: Requires internet connection!
     """
     filenames = []
     url_base = 'https://archive.stsci.edu/missions/tess/tid/'
@@ -465,9 +548,21 @@ def get_tess_filenames(tic, minsector=1, maxsector=55):
 
 
 def upper_sigma_clip(series, sig, clip=None):
-    """Return a boolean array to index by to perform a sigma clip
+    """
+    Return a boolean array to index by to perform an upper sigma clip
     
-    Passing a clip will start with a cetain amount clipped
+    === Parameters ===
+    series: 1D numpy array
+        Array of series to be sigma clipped
+    sig: float or int
+        Sigma clip factor
+    clip: boolean numpy array
+        Starting array for the sigma clip, False data points will be masked.
+        Must be the same shape as series.
+        
+    === Returns ===
+    clip: boolean numpy array
+        Boolean array of points to be clipped, same shape as series
     """
     delta = 1
     if clip is None:
@@ -482,8 +577,15 @@ def upper_sigma_clip(series, sig, clip=None):
         
     return clip
 
+
 def get_star_info(tic):
+    """
+    Retrieve the info of a star for a given TIC, returns a tuple of the 
+    following information:
     
+    (Teff, logg, radius, radius_min, radius_max, 
+    mass, mass_min, mass_max, RA, Dec)
+    """
     result = Catalogs.query_criteria(catalog="Tic", ID=tic).as_array()
     Teff = result[0][64]
     logg = result[0][66]
