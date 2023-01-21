@@ -235,7 +235,39 @@ class LightCurve():
             plt.show()
         if savefig:
             plt.savefig(savefig)
+    
+    
+        def plot_results(self, results, phase_range=0.1, fnorm_range=None, 
+                         show=True, savefig=None):
+            nrows = len(results)
+            fig, axs = plt.subplots(nrows=nrows, ncols=1, 
+                                    figsize=(6,3*nrows),
+                                    sharex='col', sharey=True,
+                                    gridspec_kw={"wspace":0.02, "hspace":0.02})
+            for i in range(nrows):
+                folded_t = phase_fold(self.bjd, results[i].period, results[i].T0)
+                axs[i].scatter(folded_t, self.fnorm_detrend, s=0.2)
 
+                model_t = phase_fold(results[i]["model_lightcurve_time"], 
+                                     results[i]['period'], results[i].T0)
+                sorts = np.argsort(model_t)
+                axs[i].plot(model_t[sorts], 
+                            results[i]["model_lightcurve_model"][sorts], 
+                            color='r', ls="--")
+                axs[i].set_xlim(-phase_range/2, phase_range/2)
+                axs[i].grid()
+                axs[i].set_ylabel(r"$F_{norm}$")
+                
+            axs[-1].set_ylabel("Phase")
+
+            if fnorm_range:
+                axs[0].set_ylim(*fnorm_range)
+
+            if show:
+                plt.show()
+            if savefig:
+                plt.savefig(savefig)
+            
 
 class TIC_LightCurve(LightCurve): 
     
@@ -397,6 +429,7 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, **tls_kwargs):
     i = 1
     
     # Start looping finding more planets
+    grazing = False
     while i <= max_iterations:
         # Mask found transit, | is logical or, and acumulates false
         intransit = intransit | transit_mask(bjd, result_list[-1].period, 
@@ -405,17 +438,18 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, **tls_kwargs):
         
         # Look for planets again with transits masked
         model = transitleastsquares(bjd[~intransit], fnorm[~intransit])
-        result = model.power(**tls_kwargs)
+        result = model.power(**tls_kwargs, 
+                             transit_template=['default', 'grazing'][grazing])
         
         # Check if planet found
         if result["SDE"] > threshold:
             result_list.append(result)
-        else: # Run a grazing template to see if we missed something?
-            result = model.power(transit_template='grazing',**tls_kwargs)
-            if result["SDE"] > threshold:
-                result_list.append(result)
-            else:
-                break
+        elif not grazing: # Run a grazing template to see if we missed something?
+            grazing = True
+            continue
+        else:
+            break
+
         # Increment
         i += 1
         
@@ -601,3 +635,8 @@ def get_star_info(tic):
     
     return Teff, logg, radius, radius_min, radius_max,\
            mass, mass_min, mass_max, RA, Dec
+
+
+def phase_fold(bjd, P, T0):
+    folded_t = (bjd - T0 + P/2) % P / P - 0.5
+    return folded_t
