@@ -155,7 +155,8 @@ class LightCurve():
         detrended = True
         
         for i in range(len(bjd_splits)):
-            bjd, fnorm, efnorm = bjd_splits[i], fnorm_splits[i], efnorm_splits[i]
+            bjd, fnorm, efnorm = bjd_splits[i], fnorm_splits[i],\
+                                 efnorm_splits[i]
             residual_rotation, Prot = rotation_check(bjd, fnorm, efnorm)
             fnorm_detrend = fnorm.copy()
             count = 0
@@ -165,11 +166,9 @@ class LightCurve():
                 map_soln = build_model_SHO(bjd, fnorm_detrend, efnorm, Prot)
                 count += 1
                 fnorm_detrend -= map_soln["pred"]/1000
-              
-                # plt.plot(bjd, fnorm_detrend)
-                # plt.show()
                 
-                residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, efnorm)
+                residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, 
+                                                         efnorm)
             
             detrended = not residual_rotation and detrended
             full_fnorm_detrend[index:index+len(fnorm_detrend)] = fnorm_detrend
@@ -210,7 +209,7 @@ class LightCurve():
         return self.detrended
     
     
-    def plot_curve(self, series, ax_labels, show=True, savefig=None):
+    def plot_curve(self, series, ax_labels=None, show=True, savefig=None):
         bjd_start = self.bjd[0]
         series_splits = self.get_splits(series + [self.bjd])
         nrows, ncols = len(series_splits)-1, len(series_splits[0])
@@ -218,7 +217,11 @@ class LightCurve():
         fig, axs = plt.subplots(figsize=(ncols*6, nrows*3), 
                                 sharex='col', sharey='row',
                                 nrows=nrows, ncols=ncols, 
-                                gridspec_kw={"wspace":0.02, "hspace":0.05})
+                                gridspec_kw={"wspace":0.02, "hspace":0.05},
+                                squeeze=False)
+        
+        if not ax_labels:
+            ax_labels = ['']*nrows
 
         for i in range(nrows):
             axs[i][0].set_ylabel(ax_labels[i])
@@ -237,36 +240,51 @@ class LightCurve():
             plt.savefig(savefig)
     
     
-        def plot_results(self, results, phase_range=0.1, fnorm_range=None, 
-                         show=True, savefig=None):
-            nrows = len(results)
-            fig, axs = plt.subplots(nrows=nrows, ncols=1, 
-                                    figsize=(6,3*nrows),
-                                    sharex='col', sharey=True,
-                                    gridspec_kw={"wspace":0.02, "hspace":0.02})
-            for i in range(nrows):
-                folded_t = phase_fold(self.bjd, results[i].period, results[i].T0)
-                axs[i].scatter(folded_t, self.fnorm_detrend, s=0.2)
+    def plot_results(self, results, phase_range=0.1, fnorm_range=None, 
+                     show=True, savefig=None):
+        nrows = len(results)
+        fig, axs = plt.subplots(nrows=nrows, ncols=1, 
+                                figsize=(6,3*nrows),
+                                sharex='col', sharey=True,
+                                gridspec_kw={"wspace":0.02, "hspace":0.02},
+                                squeeze=False)
 
-                model_t = phase_fold(results[i]["model_lightcurve_time"], 
-                                     results[i]['period'], results[i].T0)
-                sorts = np.argsort(model_t)
-                axs[i].plot(model_t[sorts], 
-                            results[i]["model_lightcurve_model"][sorts], 
-                            color='r', ls="--")
-                axs[i].set_xlim(-phase_range/2, phase_range/2)
-                axs[i].grid()
-                axs[i].set_ylabel(r"$F_{norm}$")
-                
-            axs[-1].set_ylabel("Phase")
+            
+        for i in range(nrows):
+            folded_t = phase_fold(self.bjd, results[i].period, results[i].T0)
+            axs[i].scatter(folded_t, self.fnorm_detrend, s=0.2)
 
-            if fnorm_range:
-                axs[0].set_ylim(*fnorm_range)
+            model_t = phase_fold(results[i]["model_lightcurve_time"], 
+                                 results[i]['period'], results[i].T0)
+            sorts = np.argsort(model_t)
+            axs[i].plot(model_t[sorts], 
+                        results[i]["model_lightcurve_model"][sorts], 
+                        color='r', ls="--")
+            axs[i].set_xlim(-phase_range/2, phase_range/2)
+            axs[i].grid()
+            axs[i].set_ylabel(r"$F_{norm}$")
 
-            if show:
-                plt.show()
-            if savefig:
-                plt.savefig(savefig)
+            f_sorts = np.argsort(folded_t)
+
+            phase_series = bin_curve(folded_t[f_sorts], 
+                                     self.fnorm_detrend[f_sorts],
+                                     self.efnorm[f_sorts], 
+                                     even_bins=True,
+                                     bin_length = 0.0025)
+            bin_phase, bin_fnorm, bin_efnorm = phase_series
+
+            axs[i].errorbar(bin_phase, bin_fnorm, bin_efnorm,
+                            ls='', marker='.')
+
+        axs[-1].set_ylabel("Phase")
+
+        if fnorm_range:
+            axs[0].set_ylim(*fnorm_range)
+
+        if show:
+            plt.show()
+        if savefig:
+            plt.savefig(savefig)
             
 
 class TIC_LightCurve(LightCurve): 
@@ -324,10 +342,28 @@ def rotation_check(bjd, fnorm, efnorm):
     return dBIC <= -10, Prot
 
 
-def bin_curve(bjd, fnorm, efnorm, bin_width=10):
+def bin_curve(bjd, fnorm, efnorm, bin_width=10, even_bins=False,
+              bin_length=0.001):
     """Bin a given lightcurve 
     """
-    bin_indeces = np.arange(0, len(bjd)+bin_width, bin_width)
+    if even_bins:
+        bjd_cuts = np.arange(bjd[0], bjd[-1]+bin_length, bin_length)
+        index_cuts = []
+        j = 0
+        i = 0
+        while i < len(bjd) and j+1 < len(bjd_cuts):
+            if bjd[i] >= bjd_cuts[j]:
+                if bjd[i] >= bjd_cuts[j+1]:
+                    j += 1
+                else:
+                    index_cuts.append(i)
+                    j += 1
+            i += 1
+        index_cuts.append(len(bjd))
+        bin_indeces = np.array(index_cuts)
+
+    else:
+        bin_indeces = np.arange(0, len(bjd)+bin_width, bin_width)
     
     bin_bjd    = np.zeros(len(bin_indeces)-1)
     bin_fnorm  = np.zeros(len(bin_indeces)-1)
