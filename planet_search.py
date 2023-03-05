@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from misc_functions import *
 
 from transitleastsquares import transitleastsquares, transit_mask
@@ -29,7 +30,7 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, **tls_kwargs):
     """
     
     # All points are in the transit
-    intransit = np.zeros(len(bjd), dtype=bool)
+    # intransit = np.zeros(len(bjd), dtype=bool)
     
     # Look for the first planet
     model = transitleastsquares(bjd, fnorm)
@@ -44,14 +45,16 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, **tls_kwargs):
     
     # Start looping finding more planets
     grazing = False
+    
     while i <= max_iterations:
-        # Mask found transit, | is logical or, and acumulates false
-        intransit = intransit | transit_mask(bjd, result_list[-1].period, 
-                                             2*result_list[-1].duration, 
-                                             result_list[-1].T0)
+        # Mask transits
+        bjd, fnorm = mask_transits(bjd, fnorm, result_list[-1].period, 
+                                   2*result_list[-1].duration, 
+                                   result_list[-1].T0, 
+                                   method='noise')
         
         # Look for planets again with transits masked
-        model = transitleastsquares(bjd[~intransit], fnorm[~intransit])
+        model = transitleastsquares(bjd, fnorm)
         result = model.power(**tls_kwargs, 
                              transit_template=['default', 'grazing'][grazing])
         
@@ -67,5 +70,25 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, **tls_kwargs):
         # Increment
         i += 1
         
+    # plt.scatter(bjd[~intransit], fnorm[~intransit], s=0.1)
+    # plt.show()
+        
     return result_list
 
+
+def mask_transits(bjd, fnorm, period, duration, T0, method):
+    # Make sure method is there
+    assert method in ['remove', 'noise']
+    
+    # Avoid aliasing at all costs
+    bjd, fnorm = bjd.copy(), fnorm.copy()
+    intransit = transit_mask(bjd, period, 2*duration, T0)
+    
+    if method == 'remove':
+        return bjd[~intransit], fnorm[~intransit]
+    
+    elif method == 'noise':
+        rms = np.mean((fnorm - 1)**2)**0.5
+        fnorm[intransit] = np.random.normal(loc=1, scale=rms, 
+                                            size=sum(intransit))
+        return bjd, fnorm

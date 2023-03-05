@@ -1,6 +1,10 @@
+import numpy as np
 import requests, re, os
 from astropy.io import fits
 from astroquery.mast import Catalogs
+
+from misc_functions import *
+
 
 def get_star_info(tic):
     """

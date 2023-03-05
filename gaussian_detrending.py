@@ -1,13 +1,17 @@
+import numpy as np
 import pymc3 as pm
 import pymc3_ext as pmx
 import aesara_theano_fallback.tensor as tt
 from celerite2.theano import terms, GaussianProcess
 from gls import Gls
 
+from misc_functions import *
+
 
 def rotation_check(bjd, fnorm, efnorm):
     # Should I bin the light curve?
     bjd, fnorm, efnorm = bin_curve(bjd, fnorm, efnorm)
+    T = bjd[-1] - bjd[0]
     
     gls = Gls(((bjd, fnorm, efnorm)), fend=10, fbeg=0.1/(bjd[-1]-bjd[0]))
     
@@ -21,7 +25,7 @@ def rotation_check(bjd, fnorm, efnorm):
     
     dBIC = DeltaBIC(fnorm, efnorm, model, model_null, k=4)
     
-    return dBIC <= -10, Prot
+    return (dBIC<=-10 and Prot < T/2), Prot
 
 
 

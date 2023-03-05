@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def lnlike(y, ey, model):
@@ -87,6 +88,7 @@ def upper_sigma_clip(series, sig, clip=None, iterative=False):
     while delta:
         c_size = np.sum(~clip)
         median = np.nanmedian(series[clip])
+        ## No reason for this to be rms
         rms = np.sqrt(np.nanmedian((series[clip] - median)**2))
         clip = series <= median + rms*sig
         if iterative:
@@ -97,8 +99,20 @@ def upper_sigma_clip(series, sig, clip=None, iterative=False):
     return clip
 
 
-
 def phase_fold(bjd, P, T0):
     folded_t = (bjd - T0 + P/2) % P / P - 0.5
     return folded_t
 
+
+def plot_result(result):
+    plt.figure(figsize=(6,3))
+    plt.axline((0, 6),(1, 6))
+    plt.xlim(min(result.periods), max(result.periods))
+    plt.plot(result.periods, result.power, color='black', lw=0.5)
+    for n in range(1, 20):
+        plt.axvline(n*result.period, alpha=0.4, lw=1, linestyle="dashed")
+        plt.axvline(result.period/n, alpha=0.4, lw=1, linestyle="dashed")
+    plt.xlabel("Period (Days)")
+    plt.ylabel("SDE")
+    plt.show()
+    
