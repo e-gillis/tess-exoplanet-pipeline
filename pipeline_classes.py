@@ -1,11 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import savgol_filter
 
 from get_tess_data import *
-from gaussian_detrending import * 
+from detrending_modules import * 
 from planet_search import *
 from misc_functions import *
+import vetting as vet
 
 
 class TransitSearch:
@@ -44,6 +44,7 @@ class TransitSearch:
         self.u = u
         
         self.results = None
+        self.result_tags = None
     
     
     def transit_search(self, threshold=6, max_iterations=5):
@@ -62,8 +63,38 @@ class TransitSearch:
     
     
     # Is there any point in having a continuous lightcurve?
-    def vet_transits(self):
-        raise NotImplementedError
+    def vet_results(self):
+        if self.results is None:
+            print("Must run TLS before vetting results")
+        
+        self.result_tags = []
+    
+        for i in range(len(self.lightcurves)):
+            lc, results = self.lightcurves[i], self.results[i]
+            vetting_array = np.zeros(len(results))
+
+            # Check for correlation with main period in detrended
+            vetting_array += vet.rotation_signal(lc, results)
+
+            # Check that TLS spectrums are good?
+            vetting_array += vet.bad_tls_spectrum(results)
+
+            # Odd Even Mismatch
+            vetting_array += vet.odd_even_mismatch(results)
+
+            self.result_tags.append(vetting_array)
+    
+     
+    def cc_results(self, vet_results=True):
+        
+        if vet_results and (self.result_tags is None):
+            self.vet_results
+        
+        cut_results_list = vet.cut_results(self.results, self.result_tags)
+        correlated_results = vet.correlate_results(cut_results_list)
+        
+        return correlated_results
+    
     
     def plot_transits(self):
         raise NotImplementedError
@@ -82,12 +113,7 @@ class LightCurve():
         self.qual_flags = qual_flags
         self.texp = texp
         
-        self.gauss_detrendeded = False
-        self.median_detrendeded = False
-        self.detrended = False
-        
-        self.Prot = []
-        
+        self.detrend_methods = []
         self.fnorm_detrend = None       
         
     
@@ -119,95 +145,91 @@ class LightCurve():
         return cut_series
     
     ### Need to work on the detrending routines
-    def detrend_lc(self):
-        detrended = False
-        gaussian_detrended = False
-        median_detrended = False
-        
-        try:
-            gaussian_detrended = self.gaussian_detrend_lc()
-        except:
-            median_detrended = self.median_detrend_lc()
-    
-        if not gaussian_detrended:
-            median_detrended = self.median_detrend_lc()
-            
-        self.detrended = gaussian_detrended or median_detrended
-        self.gaussian_detrended = gaussian_detrended 
-        self.median_detrended = median_detrended
-    
-    
-    def gaussian_detrend_lc(self, cont=False):
-        
-        bjd_splits, efnorm_splits = self.get_splits([self.bjd, self.efnorm])
-        if cont:
-            fnorm_splits = self.get_splits([self.fnorm_detrend])[0]
+    def detrend_lc(self, split=False):
+        # Check for rotation, if detected try GP
+        if not split:
+            gaussian_detrended = False      
+            try:
+                gaussian_detrended = self.gaussian_detrend_lc()
+            except:
+                pass
+
+            if not gaussian_detrended:
+                spline_detrended = self.spline_detrend_lc()
+
         else:
-            fnorm_splits = self.get_splits([self.fnorm])[0]
-        
-        full_fnorm_detrend = np.zeros(len(self.fnorm))
-        index = 0
-        detrended = True
-        
-        for i in range(len(bjd_splits)):
-            bjd, fnorm, efnorm = bjd_splits[i], fnorm_splits[i],\
-                                 efnorm_splits[i]
-            residual_rotation, Prot = rotation_check(bjd, fnorm, efnorm)
-            fnorm_detrend = fnorm.copy()
-            count = 0
+            bjd_s, fnorm_s, efnorm_s = self.get_splits([self.bjd, self.fnorm,
+                                                        self.efnorm])
+            fnorm_detrend_s = []
             
-            while residual_rotation and count < 3:
-                self.Prot.append(Prot)
-                map_soln = build_model_SHO(bjd, fnorm_detrend, efnorm, Prot)
-                fnorm_detrend -= map_soln["pred"]/1000
+            for i in range(len(bjd_s)):
+                bjd, fnorm, efnorm = bjd_s[i], fnorm_s[i], efnorm_s[i]
+                gd = False
+                try:
+                    fnorm_detrend, gd = gaussian_detrend(bjd, fnorm, efnorm)
+                    if 'gaussian' not in self.detrend_methods:
+                        self.detrend_methods.append('gaussian')
+                except:
+                    pass
                 
-                residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, 
-                                                         efnorm)
-                count += 1
+                if not gd:
+                    fnorm_detrend = spline_detrend(bjd, fnorm, efnorm)
+                    if 'spline' not in self.detrend_methods:
+                        self.detrend_methods.append('spline')
+                
+                fnorm_detrend_s.append(fnorm_detrend)
             
-            detrended = (count!=0) and (not residual_rotation) and (detrended)
-            full_fnorm_detrend[index:index+len(fnorm_detrend)] = fnorm_detrend
-            index += len(fnorm_detrend)
+            self.fnorm_detrend = np.concatenate(fnorm_detrend_s)
+                
+        # Sigma Clip with noise
+        clip = upper_sigma_clip(self.fnorm_detrend, sig=5)
+        self.fnorm_detrend[~clip] = np.random.normal(loc=1, 
+                                    scale=np.std(self.fnorm_detrend[clip]),
+                                    size=sum(~clip))
             
-        self.fnorm_detrend = full_fnorm_detrend
-        self.gauss_detrendeded = False
-        self.detrended = detrended
+            
+    
+    # Lightcurve is already split!
+    def gaussian_detrend_lc(self, cont=False):
+        if cont:
+            fnorm = self.fnorm_detrend
+        else:
+            fnorm = self.fnorm
         
+        self.fnorm_detrend, self.detrended = gaussian_detrend(self.bjd, 
+                                                              fnorm,    
+                                                              self.efnorm)
+        self.detrend_methods.append('gaussian')
         return self.detrended
     
     
     def median_detrend_lc(self, window_length=400, cont=False):
-        # Find indeces corresponding to different sectors
         if cont:
-            fnorm_splits = self.get_splits([self.fnorm_detrend])[0]
+            fnorm = self.fnorm_detrend
         else:
-            fnorm_splits = self.get_splits([self.fnorm])[0]
-
-        # Median 
-        full_fnorm_detrend = np.zeros(len(self.fnorm))
-        index = 0
-        k = window_length // 2
-
-        for i in range(len(fnorm_splits)):
-            fnorm = fnorm_splits[i]
-            
-            print(len(fnorm))
-            if window_length % 2 == 0: window_length += 1
-            
-            sav_model = savgol_filter(fnorm, window_length, 1) - 1
-            fnorm_detrend = fnorm - sav_model
-
-            full_fnorm_detrend[index:index+len(fnorm_detrend)] = fnorm_detrend
-            index += len(fnorm_detrend)
-
-        self.median_detrended = True
-        self.detrended = True
-        self.fnorm_detrend = full_fnorm_detrend
+            fnorm = self.fnorm
+        
+        self.fnorm_detrend, self.detrended = median_detrend(fnorm, 400)
+        self.detrend_methods.append('median')
         return self.detrended
     
     
-    def plot_curve(self, series, ax_labels=None, show=True, savefig=None):
-        bjd_start = self.bjd[0]
+    def spline_detrend_lc(self, cont=False):
+        if cont:
+            fnorm = self.fnorm_detrend
+        else:
+            fnorm = self.fnorm
+            
+        self.fnorm_detrend, self.detrended = spline_detrend(self.bjd, fnorm,
+                                                            self.efnorm)
+        self.detrend_methods.append('spline')
+        return self.detrended
+    
+    
+    def plot_curve(self, series, ax_labels=None, show=True, bjd_start=None,
+                   savefig=None):
+        if bjd_start is None:
+            bjd_start = self.bjd[0]
         series_splits = self.get_splits(series + [self.bjd])
         nrows, ncols = len(series_splits)-1, len(series_splits[0])
 
@@ -231,10 +253,12 @@ class LightCurve():
         for j in range(ncols):
             axs[-1][j].set_xlabel("Days since first observation")
 
+        if savefig:
+            plt.savefig(savefig, bbox_inches='tight', dpi=400)
+        
         if show:
             plt.show()
-        if savefig:
-            plt.savefig(savefig)
+
     
     
     def plot_results(self, results, phase_range=0.1, fnorm_range=None, 
