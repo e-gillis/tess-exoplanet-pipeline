@@ -87,6 +87,7 @@ def get_priors_data(ts, correlated_results):
         P_sigma = abs(P - P_guess)
         
     else:
+        result = correlated_results[0]
         P = result['period']
         T0 = result['T0']
         P_sigma = None
