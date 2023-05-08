@@ -1,11 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pickle
 
 from get_tess_data import *
 from detrending_modules import * 
 from planet_search import *
 from misc_functions import *
 import vetting as vet
+
+VERSION = "0.1"
 
 
 class TransitSearch:
@@ -99,6 +102,15 @@ class TransitSearch:
     
     def plot_transits(self):
         raise NotImplementedError
+        
+        
+    def save(self, filename):
+        # Set version
+        self.version = VERSION
+        
+        with open(filename+'.ts', "wb") as f:
+            pickle.dump(self, f)
+        return None
         
         
 
@@ -319,4 +331,9 @@ class TIC_LightCurve(LightCurve):
         
         LightCurve.__init__(self, bjd, fnorm, efnorm, sectors, qual_flags, texp)       
         
-        
+
+### Loading back objects
+def load_ts(path):        
+    with open(path, "rb") as f:
+        loaded_ts = pickle.load(f)
+    return loaded_ts
