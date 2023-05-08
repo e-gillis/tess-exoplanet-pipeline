@@ -133,7 +133,10 @@ def get_priors_data(ts, correlated_results):
 def get_pos(nwalkers, correlated_results, priors):
     # Get depth estimates from results
     depths = [(1-result.depth)**0.5 for result in correlated_results]
-    Rp, Rp_sigma = np.mean(depths), np.std(depths)
+    if len(depths) > 1:
+        Rp, Rp_sigma = np.mean(depths), np.std(depths)
+    else:
+        Rp, Rp_sigma = depths[0], depths[0]/20
     
     # Get samplers to sample walker positions from
     Rp_dist = scipy.stats.norm(Rp, Rp_sigma)
