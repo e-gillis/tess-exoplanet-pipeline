@@ -47,13 +47,14 @@ class TransitSearch:
         self.result_tags = None
     
     
-    def transit_search(self, threshold=6, max_iterations=5):
+    def transit_search(self, threshold=6, max_iterations=5, grazing_search=True):
         
         self.results = []
         
         for lc in self.lightcurves:
             period_max = min((lc.bjd[-1] - lc.bjd[0])/2, 28)
             results_list = find_transits(lc.bjd, lc.fnorm_detrend, 
+                                         grazing_search=grazing_search,
                                          period_min=1, period_max=period_max,
                                          show_progress_bar=True, 
                                          R_star=self.radius, M_star=self.mass,
