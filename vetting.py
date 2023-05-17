@@ -54,6 +54,24 @@ def duration_period_fraction(results, tag=8):
     return tag*np.array(dp_ratio)
 
 
+def low_snr(results, lc, cutoff=2, tag=16):
+    """Return flag array with results whose SNR is low flagged
+    """
+    flag = []
+    for result in results:
+        # Length of duration in indeces
+        duration_cut = int((result.duration * 60*60*24) / 2)
+        indx = np.arange(0, len(lc.fnorm_detrend), duration_cut)
+        
+        lc_noise = np.mean([lc.fnorm_detrend[indx[i]:indx[i+1]] 
+                            for i in range(len(indx) - 1)])
+        
+        snr = result['depth'] / lc_noise * (result['transit_count'])**0.5
+        flag.append(snr < cutoff)
+    
+    return tag*np.array(flag)
+
+
 ### Vetting Helper functions ###
 
 def cut_results(results_list, result_tags):

@@ -8,7 +8,7 @@ from planet_search import *
 from misc_functions import *
 import vetting as vet
 
-VERSION = "0.1"
+VERSION = "0.2"
 
 
 class TransitSearch:
@@ -55,7 +55,7 @@ class TransitSearch:
         self.results = []
         
         for lc in self.lightcurves:
-            period_max = min((lc.bjd[-1] - lc.bjd[0])/2, 28)
+            period_max = 30 #min((lc.bjd[-1] - lc.bjd[0])/2, 30)
             results_list = find_transits(lc.bjd, lc.fnorm_detrend, 
                                          grazing_search=grazing_search,
                                          period_min=1, period_max=period_max,
@@ -76,15 +76,18 @@ class TransitSearch:
         for i in range(len(self.lightcurves)):
             lc, results = self.lightcurves[i], self.results[i]
             vetting_array = np.zeros(len(results))
-
+            
             # Check for correlation with main period in detrended
             vetting_array += vet.rotation_signal(lc, results)
-
+            
             # Check that TLS spectrums are good?
             vetting_array += vet.bad_tls_spectrum(results)
-
+            
             # Odd Even Mismatch
             vetting_array += vet.odd_even_mismatch(results)
+            
+            # SNR cut
+            vetting_array += vet.low_snr(results, lc)
 
             self.result_tags.append(vetting_array)
     
@@ -333,7 +336,7 @@ class TIC_LightCurve(LightCurve):
         
 
 ### Loading back objects
-def load_ts(path):        
+def load_ts(path):      
     with open(path, "rb") as f:
         loaded_ts = pickle.load(f)
     return loaded_ts
