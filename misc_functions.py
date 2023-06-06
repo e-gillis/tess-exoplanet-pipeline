@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from transitleastsquares import transit_mask
 
 
 def lnlike(y, ey, model):
@@ -115,4 +116,8 @@ def plot_result(result):
     plt.xlabel("Period (Days)")
     plt.ylabel("SDE")
     plt.show()
+    
+
+def get_Ntransits(P, T0, bjd, fnorm):
+    intransit = transit_mask(bjd, P, 2*duration, T0)
     

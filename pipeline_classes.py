@@ -48,9 +48,13 @@ class TransitSearch:
         
         self.results = None
         self.result_tags = None
+        
+        # Space for planet Candidates
+        self.planet_chains = []
     
     
-    def transit_search(self, threshold=6, max_iterations=5, grazing_search=True):
+    def transit_search(self, threshold=6, max_iterations=5, 
+                       grazing_search=True, progress=True):
         
         self.results = []
         
@@ -59,7 +63,7 @@ class TransitSearch:
             results_list = find_transits(lc.bjd, lc.fnorm_detrend, 
                                          grazing_search=grazing_search,
                                          period_min=1, period_max=period_max,
-                                         show_progress_bar=True, 
+                                         show_progress_bar=progress, 
                                          R_star=self.radius, M_star=self.mass,
                                          u=self.u)
             
@@ -88,6 +92,9 @@ class TransitSearch:
             
             # SNR cut
             vetting_array += vet.low_snr(results, lc)
+            
+            # Check TLS edges
+            vetting_array += vet.tls_edge(results)
 
             self.result_tags.append(vetting_array)
     
@@ -101,6 +108,10 @@ class TransitSearch:
         correlated_results = vet.correlate_results(cut_results_list)
         
         return correlated_results
+    
+    
+    # def transit_model(self, )
+    
     
     
     def plot_transits(self):
@@ -332,7 +343,19 @@ class TIC_LightCurve(LightCurve):
         lc_params = get_tess_data(tic)
         bjd, fnorm, efnorm, sectors, qual_flags, texp = lc_params
         
-        LightCurve.__init__(self, bjd, fnorm, efnorm, sectors, qual_flags, texp)       
+        LightCurve.__init__(self, bjd, fnorm, efnorm, sectors, qual_flags, texp)    
+        
+        
+
+# class planet_candidate:
+    
+#     def __init__(self, ts, correlated_results):
+        
+#         # Get Data in this class
+#         self.ts = ts
+        
+        
+        # Load lightcurves
         
 
 ### Loading back objects

@@ -1,12 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from transitleastsquares import transit_mask
 
 import batman
 import emcee
 import scipy
 import corner
 
-def transit_log_prob(params, star_params, lc_arrays, param_priors):
+
+def transit_log_prob(params, star_params, lc_arrays, param_priors, rand=True):
     
     # Get probability of model
     prior_probs = [param_priors[i].pdf(params[i]) for i in range(4)]
@@ -27,8 +29,12 @@ def transit_log_prob(params, star_params, lc_arrays, param_priors):
     # Could enforce all points at zero here
     
     # Sample a in units of R* Semimajor axis / R*
-    R_star = np.random.normal(R, R_err)
-    M_star = np.random.normal(M, M_err)
+    if rand:
+        R_star = np.random.normal(R, R_err)
+        M_star = np.random.normal(M, M_err)
+    else:
+        R_star = R
+        M_star = M
     
     # G in R⊙^3 / M⊙ days^2
     # Should make this a function
@@ -67,13 +73,17 @@ def get_priors_data(ts, correlated_results):
         T0_diff_array = np.array([np.abs(T0s - T0) for T0 in T0s])
         
         # Take all Ps that are close to the max P
-        P_guess = np.mean(Ps[np.isclose(Ps, max(Ps), rtol=0.1)])
+        P_guess = np.mean(Ps[np.isclose(Ps, max(Ps), rtol=0.05)])
         
         # This could be faulty, what if the P_guess is bad?
         ratio_array = np.round(T0_diff_array / P_guess)
         
         # The ratios should be close to integers
-        P_guess_array = np.divide(T0_diff_array, ratio_array, where=(ratio_array!=0))
+        # Only divide if the T0 difference is greater than 28 and the ratio
+        # Is greater than 0
+        P_guess_array = np.divide(T0_diff_array, ratio_array, 
+                        where=np.logical_and(ratio_array!=0, 
+                                             T0_diff_array > 28))
         P_guess_array = P_guess_array[P_guess_array > 0]
         
         T0 = min(T0s)
@@ -154,20 +164,21 @@ def get_pos(nwalkers, correlated_results, priors):
     return walkers
 
 
-def mcmc_planet_fit(ts, correlated_results, steps=5000, nwalkers=48):
+def mcmc_planet_fit(ts, correlated_results, steps=5000, nwalkers=48, progress=True):
     priors, star_params, lc_arrays = get_priors_data(ts, correlated_results)
     walkers = get_pos(nwalkers, correlated_results, priors)
     
     ensam = emcee.EnsembleSampler(nwalkers, 4, transit_log_prob, 
                                   args=(star_params, lc_arrays, priors))
     
-    ensam.run_mcmc(walkers, nsteps=steps, progress=True)
+    ensam.run_mcmc(walkers, nsteps=steps, progress=progress)
     return ensam, priors, lc_arrays, star_params
 
 
 ### Plotting Functions ###
 
-def plot_chain_dists(chain, priors, titles, savefig=None, square=True, T0_offset=True):
+def plot_chain_dists(chain, priors, titles, savefig=None, square=True, 
+                     T0_offset=True, show=False, title=None):
     if T0_offset:
         T0_m = int(np.mean(chain[:,0]))
         offset = np.zeros(chain.shape)
@@ -198,13 +209,17 @@ def plot_chain_dists(chain, priors, titles, savefig=None, square=True, T0_offset
         axs[i].set_xlim(min(x), max(x))
         axs[i].set_yticks([])
     
+    if title:
+        plt.title(title)
+    
     if savefig:
         plt.savefig(savefig, bbox_inches='tight')
-    plt.show()
+    if show:
+        plt.show()
     
     
     
-def plot_chain_corner(chain, labels, savefig=None, T0_offset=True):
+def plot_chain_corner(chain, labels, savefig=None, T0_offset=True, show=False, title=None):
     if T0_offset:
         T0_m = int(np.mean(chain[:,0]))        
         offset = np.zeros(chain.shape)
@@ -215,14 +230,18 @@ def plot_chain_corner(chain, labels, savefig=None, T0_offset=True):
         
     figure = corner.corner(chain, labels=labels)
     
+    if title:
+        plt.title(title)
+    
     if savefig:
         plt.savefig(savefig, bbox_inches='tight')
-        
-    plt.show()
+    
+    if show:
+        plt.show()
     
 
 
-def plot_models(lc_arrays, star_params, chain, samples=20, savefig=None):
+def plot_models(lc_arrays, star_params, chain, samples=20, savefig=None, show=False, title=None):
     plt.figure(figsize=(12,4))
     
     bjd, fnorm, efnorm = lc_arrays
@@ -272,18 +291,22 @@ def plot_models(lc_arrays, star_params, chain, samples=20, savefig=None):
         plt.plot(bjd_folded[fold_sort], m.light_curve(bm_params)[fold_sort], 
                  color='k', lw=1)
     
-    duration = P / np.pi * np.arcsin(1/a)
+    duration = P / np.pi * np.arcsin(1/a)         
     plt.xlim(-1.5*duration, 1.5*duration)
     plt.ylabel("Normalized Flux")
     plt.xlabel("Days Since Transit Middle")
     
+    if title:
+        plt.title(title)
+    
     if savefig:
         plt.savefig(savefig, bbox_inches='tight')
-        
-    plt.show()
+    
+    if show:
+        plt.show()
     
 
-def plot_chain_evo(chain, titles, savefig=None):
+def plot_chain_evo(chain, titles, savefig=None, show=False, title=None):
     # Chain must be staight from ensam
     fig, axs = plt.subplots(1, chain.shape[-1], 
                             figsize=(4*chain.shape[-1], 4), sharey=False)
@@ -303,10 +326,46 @@ def plot_chain_evo(chain, titles, savefig=None):
     axs[0].set_ylabel('Parameter Value')
     # plt.tight_layout()
     
+    if title:
+        plt.title(title)
+    
     if savefig:
         plt.savefig(savefig, bbox_inches='tight')
+    
+    if show:
+        plt.show()
         
-    plt.show()
+
+def transit_snr(chain, bjd, fnorm_detrend, star_params):
+    T0 = np.median(chain[:,0])
+    P = np.median(chain[:,1])
+    Rp = np.median(chain[:,2])
+    
+    depth = Rp**2
+    R, R_err, M, M_err, u = star_params
+    G = 2942.2062
+    a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R
+    duration = P / np.pi * np.arcsin(1/a)         
+    
+    print(bjd, P, duration, T0)
+    intransit = transit_mask(bjd, P, duration, T0)
+    bjd_diff = bjd[intransit][1:] - bjd[intransit][:-1]
+    N = sum(bjd_diff > (P-duration))
+    
+    # Get the lc noise, should rewrite as it's own
+    duration_cut = int((duration * 60*24) / 2)
+    indx = np.arange(0, len(fnorm_detrend), duration_cut)
+
+    dur_binned_flux = [np.median(fnorm_detrend[indx[i]:indx[i+1]]) 
+                       for i in range(len(indx) - 1)]
+    median_noise = np.median(dur_binned_flux)
+    # Take the MAD
+    lc_noise = np.median(np.abs(np.array(dur_binned_flux) - median_noise))
+    
+    # is transit count true
+    snr = depth / lc_noise * N**0.5
+    
+    return snr
     
     
 def confidence_interval(chain, perc=0.95):

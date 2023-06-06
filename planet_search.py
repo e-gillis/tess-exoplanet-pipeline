@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from misc_functions import *
 
+
 from transitleastsquares import transitleastsquares, transit_mask
 from transitleastsquares import catalog_info
 
@@ -35,7 +36,7 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True
     
     # Look for the first planet
     model = transitleastsquares(bjd, fnorm)
-    result = model.power(**tls_kwargs)
+    result = model.power(**tls_kwargs, use_threads=1)
     
     # Check if a planet candidate is found
     if result["SDE"] < threshold:
@@ -55,17 +56,20 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True
         
         # Look for planets again with transits masked
         model = transitleastsquares(bjd, fnorm)
-        result = model.power(**tls_kwargs, 
+        result = model.power(**tls_kwargs, use_threads=1,
                              transit_template=['default', 'grazing'][grazing])
         
         # plt.scatter(bjd, fnorm, s=0.1)
         # plt.show()
         
+        diff = result.power[:-1]-result.power[1:]
+        good_spec = sum(diff==0) / len(result.power) < 0.67
+        
         # Check if planet found
-        if result["SDE"] > threshold:
+        if result["SDE"] > threshold and good_spec:
             result_list.append(result)
         # Run a grazing template to see if we missed something?
-        elif not grazing and grading_search: 
+        elif not grazing and grazing_search: 
             grazing = True
             continue
         else:
