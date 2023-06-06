@@ -5,8 +5,58 @@ import aesara_theano_fallback.tensor as tt
 from celerite2.theano import terms, GaussianProcess
 from gls import Gls
 
+from scipy.signal import savgol_filter
+
 from misc_functions import *
 
+import wotan as w
+
+### Main Detrending Functions ###
+
+def gaussian_detrend(bjd, fnorm, efnorm):
+    residual_rotation, Prot = rotation_check(bjd, fnorm, efnorm)
+    fnorm_detrend = fnorm.copy()
+    count = 0
+
+    while residual_rotation and count < 3:
+        map_soln = build_model_SHO(bjd, fnorm_detrend, efnorm, Prot)
+        fnorm_detrend -= map_soln["pred"]/1000
+
+        residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, 
+                                                 efnorm)
+        count += 1
+        
+    detrended = (count!=0) and (not residual_rotation)
+    
+    return fnorm_detrend, detrended
+
+
+def median_detrend(fnorm, window_length=400):
+    sav_model = savgol_filter(fnorm, window_length, 1) - 1
+    fnorm_detrend = fnorm - sav_model
+    
+    return fnorm_detrend, True
+
+
+def spline_detrend(bjd, fnorm, efnorm, iterative=False):
+    if iterative:
+            raise NotImplementedError
+    
+    residual_rotation, Prot = rotation_check(bjd, fnorm, efnorm)
+    if residual_rotation:
+        max_splines = int((bjd[-1]-bjd[0])//Prot * 8)
+    else:
+        max_splines = 20
+    
+    fnorm_detrend = w.flatten(bjd, fnorm, method='pspline',
+                              return_trend=False,
+                              max_splines=max_splines,
+                              break_tolerance=0)
+        
+    return fnorm_detrend, True 
+
+
+### Helper Functions ###
 
 def rotation_check(bjd, fnorm, efnorm):
     # Should I bin the light curve?
@@ -21,7 +71,6 @@ def rotation_check(bjd, fnorm, efnorm):
     Prot, offset = gls.best['P'], gls.best['offset']
     model = sincurve(bjd, *theta, Prot, offset)
     model_null = np.ones(len(bjd)) * offset
-    
     
     dBIC = DeltaBIC(fnorm, efnorm, model, model_null, k=4)
     
@@ -73,3 +122,18 @@ def build_model_SHO(bjd, fnorm, efnorm, Prot):
         map_soln = pmx.optimize(start=map_soln)
 
     return map_soln
+
+
+def chi_squared(x_data, y_data, y_sigma, y_fit, dof):
+
+    chi_array = (y_data - y_fit)**2/y_sigma**2
+    chi_squared = 1/(len(y_data)-dof) * np.sum(chi_array)
+    
+    return chi_squared
+
+
+def spline_penalty(bjd, fnorm, efnorm, trend, nsplines):
+    total_nsplines = sum(nsplines)
+    chi_2 = chi_squared(bjd, fnorm, efnorm, trend, total_nsplines)
+    return chi_2
+     
