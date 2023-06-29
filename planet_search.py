@@ -6,8 +6,8 @@ from misc_functions import *
 from transitleastsquares import transitleastsquares, transit_mask
 from transitleastsquares import catalog_info
 
-def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True,
-                  **tls_kwargs):
+def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True, 
+                  threads=1, method='noise', **tls_kwargs):
     """Return a list of TLS transit candidates from a given lightcurve.
     
     === Parameters ===
@@ -36,7 +36,7 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True
     
     # Look for the first planet
     model = transitleastsquares(bjd, fnorm)
-    result = model.power(**tls_kwargs, use_threads=1)
+    result = model.power(**tls_kwargs, use_threads=threads)
     
     # Check if a planet candidate is found
     if result["SDE"] < threshold:
@@ -52,11 +52,11 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True
         bjd, fnorm = mask_transits(bjd, fnorm, result_list[-1].period, 
                                    result_list[-1].duration, 
                                    result_list[-1].T0, 
-                                   method='noise')
+                                   method=method)
         
         # Look for planets again with transits masked
         model = transitleastsquares(bjd, fnorm)
-        result = model.power(**tls_kwargs, use_threads=1,
+        result = model.power(**tls_kwargs, use_threads=threads,
                              transit_template=['default', 'grazing'][grazing])
         
         # plt.scatter(bjd, fnorm, s=0.1)
