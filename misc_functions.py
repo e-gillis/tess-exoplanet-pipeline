@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from transitleastsquares import transit_mask
+import batman
 
 
 def lnlike(y, ey, model):
@@ -118,6 +119,44 @@ def plot_result(result):
     plt.show()
     
 
-def get_Ntransits(P, T0, bjd, fnorm):
-    intransit = transit_mask(bjd, P, 2*duration, T0)
+def get_Ntransits(P, T0, duration, bjd):
+    intransit = transit_mask(bjd, P, duration, T0)
+    bjd_diff = bjd[intransit][1:] - bjd[intransit][:-1]
+    N = sum(bjd_diff > (P-duration)) + 1
     
+    return N
+    
+
+## Modeling Functions ##
+
+def batman_model(bjd, T0, P, Rp, b, R, M, u):
+    # G in R⊙^3 / M⊙ days^2
+    # Should make this a function
+    G = 2942.2062
+    a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R
+    # Compute inclination from 
+    inc = np.arccos(b / a) * 180/np.pi
+
+    # Initialize Batman Transit
+    bm_params = batman.TransitParams()
+    bm_params.per, bm_params.rp, bm_params.inc = P, Rp, inc
+    bm_params.t0 = T0
+    bm_params.limb_dark = "quadratic"
+    bm_params.u = u
+    bm_params.a = a
+    bm_params.ecc = 0
+    bm_params.w = 90
+
+    # Make Model
+    m = batman.TransitModel(bm_params, bjd)
+
+    return m.light_curve(bm_params)    
+
+
+def generate_transit_model(best_period, R, M, u):
+        
+    def transit_model(bjd, T0, Rp, b):        
+        light_curve = batman_model(bjd, T0, best_period, Rp, b, R, M, u)
+        return light_curve
+    
+    return transit_model

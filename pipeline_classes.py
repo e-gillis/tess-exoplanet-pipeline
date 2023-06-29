@@ -2,13 +2,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 
+import scipy
+from scipy.optimize import curve_fit
+import emcee
+
+# Set TLS minimum grid for fitting
+from transitleastsquares import tls_constants
+tls_constants.MINIMUM_PERIOD_GRID_SIZE = 2
+
 from get_tess_data import *
 from detrending_modules import * 
 from planet_search import *
 from misc_functions import *
+from mcmc_fitting import transit_log_prob
 import vetting as vet
 
-VERSION = "0.2"
+VERSION = "0.3"
 
 
 class TransitSearch:
@@ -50,7 +59,7 @@ class TransitSearch:
         self.result_tags = None
         
         # Space for planet Candidates
-        self.planet_chains = []
+        self.planet_candidates = []
     
     
     def transit_search(self, threshold=6, max_iterations=5, 
@@ -94,7 +103,7 @@ class TransitSearch:
             vetting_array += vet.low_snr(results, lc)
             
             # Check TLS edges
-            vetting_array += vet.tls_edge(results)
+            # vetting_array += vet.tls_edge(results)
 
             self.result_tags.append(vetting_array)
     
@@ -110,8 +119,16 @@ class TransitSearch:
         return correlated_results
     
     
-    # def transit_model(self, )
-    
+    def get_planet_candidates(self):
+        correlated_results = self.cc_results()
+        
+        for c_results in correlated_results:
+            self.planet_candidates.append(PlanetCandidate(self, c_results))
+            
+        for pc in self.planet_candidates:
+            pc.fit_planet_params()
+            if pc.snr > 2:
+                pc.run_mcmc()
     
     
     def plot_transits(self):
@@ -347,19 +364,139 @@ class TIC_LightCurve(LightCurve):
         
         
 
-# class planet_candidate:
+class PlanetCandidate:
     
-#     def __init__(self, ts, correlated_results):
+    def __init__(self, ts, correlated_results):
         
-#         # Get Data in this class
-#         self.ts = ts
+        # Get Data in this class
+        self.ts = ts
+        self.results = correlated_results
+        self.best_result = None
         
+        # Planet Properties
+        self.T0 = None
+        self.period = None
+        self.Rp = None
+        self.b = None
+        self.duration = None
+        self.snr = None
         
-        # Load lightcurves
+        # MCMC Things
+        self.full_mcmc_chain = None
+        self.mcmc_chain = None
+        self.priors = None
+    
+    
+    def fit_planet_params(self):
+        # Get lightcurves from the transit search object
+        bjd, fnorm, efnorm = np.concatenate([lc.bjd for lc in self.ts.lightcurves]),\
+             np.concatenate([lc.fnorm_detrend for lc in self.ts.lightcurves]),\
+             np.concatenate([lc.efnorm for lc in self.ts.lightcurves])
         
+        # Get period from correlated results
+        Ps = np.array([result.period for result in self.results])
+        
+        # Take max right now, maybe do SNR later
+        best_result = self.results[np.argmax(Ps)] 
+        
+        P, P_delta = best_result.period, best_result.period_uncertainty
+        
+        # Fit period with limited TLS
+        model_full = transitleastsquares(bjd, fnorm)
+        best_result = model_full.power(period_min=P-P_delta, 
+                                       period_max=P+P_delta,
+                                       R_star=self.ts.radius, 
+                                       M_star=self.ts.mass, 
+                                       u=self.ts.u, 
+                                       show_progress_bar=False)
+        self.best_result = best_result
+        
+        # fit other params with curve_fit
+        best_period = best_result.period
+        transit_model = generate_transit_model(best_period, self.ts.radius, 
+                                               self.ts.mass, self.ts.u)
+        T0, T0_delta = best_result.T0, best_result.duration
+        bounds = np.array(((T0-T0_delta, T0+T0_delta), 
+                          (0, 1), 
+                          (0, 1))).T
+        
+        popt, pcov = curve_fit(transit_model, bjd, fnorm,
+                       p0=(best_result.T0, (1-best_result.depth)**0.5, 0.5),
+                       bounds=bounds,       
+                       sigma=efnorm)
+        
+        # Save Params
+        self.period = best_period
+        self.T0, self.Rp, self.b = popt
+        
+        # Get SNR Params for the transit
+        depth = self.Rp**2
+        noise = np.median(np.abs(fnorm - np.median(fnorm)))
+        
+        R, M = self.ts.radius, self.ts.mass
+        G = 2942.2062
+        a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R
+        
+        self.duration = P / np.pi * np.arcsin(1/a)
+        N = get_Ntransits(self.period, self.T0, self.duration, bjd)
+        self.snr = depth / noise * N**0.5
+    
+    
+    def run_mcmc(self, nsteps=4000, nwalkers=48, progress=True):
+        # Prepare priors and walker positions
+        priors, lc_arrays, walkers = ps_mcmc_prep(self, self.ts, nwalkers)
+        star_params = (self.ts.radius, self.ts.radius_err, 
+                       self.ts.mass, self.ts.mass_err, self.ts.u)
+        self.priors = priors
+        
+        # Run the MCMC
+        ensam = emcee.EnsembleSampler(nwalkers, 4, transit_log_prob, 
+                                      args=(star_params, lc_arrays, priors))
+        ensam.run_mcmc(walkers, nsteps=nsteps, progress=progress)
+        
+        # Save the chain
+        self.full_mcmc_chain = ensam.get_chain()
+        self.mcmc_chain = self.full_mcmc_chain[:2000].reshape((-1, 4))
+    
 
 ### Loading back objects
+
 def load_ts(path):      
     with open(path, "rb") as f:
         loaded_ts = pickle.load(f)
     return loaded_ts
+
+
+### MCMC Temp Functions ##
+def ps_mcmc_prep(pc, ts, nwalkers):
+    best_result = pc.best_result
+    
+    P, P_sigma = best_result.period, best_result.period_uncertainty
+    T0, T0_sigma = best_result.T0, best_result.duration
+    
+    bjd, fnorm, efnorm = np.concatenate([lc.bjd for lc in ts.lightcurves]),\
+                np.concatenate([lc.fnorm_detrend for lc in ts.lightcurves]),\
+                np.concatenate([lc.efnorm for lc in ts.lightcurves])
+    bjd_folded = (bjd - T0 + P/2) % P - P/2
+    cut = np.abs(bjd_folded) < 5*pc.duration
+    bjd_c, fnorm_c, efnorm_c = bjd[cut], fnorm[cut], efnorm[cut]    
+    lc_arrays = (bjd_c, fnorm_c, efnorm_c)
+    
+    T0_model = scipy.stats.norm(T0, T0_sigma)
+    # Period prior informed by period grid? It already has uncertainty
+    P_model = scipy.stats.norm(P, P_sigma)
+    # Uniform in log space? Linear log cutoff depth sets max Rp/R*
+    Rp_model = scipy.stats.loguniform(0.005, 0.5)
+    # Uniform prior on impact parameter?
+    b_model = scipy.stats.uniform(0, 0.95)
+    priors = [T0_model, P_model, Rp_model, b_model]
+    
+    Rp = (1-best_result.depth)**0.5 
+    Rp_sigma = Rp/20
+    Rp_dist = scipy.stats.norm(Rp, Rp_sigma)
+    
+    walker_samplers = [T0_model, P_model, Rp_dist, b_model]
+    walker_pos = [sampler.rvs(size=nwalkers) for sampler in walker_samplers]
+    walkers = np.array(walker_pos).T
+    
+    return priors, lc_arrays, walkers

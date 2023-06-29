@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from transitleastsquares import transit_mask
+from misc_functions import batman_model
 
 import batman
 import emcee
@@ -35,29 +36,11 @@ def transit_log_prob(params, star_params, lc_arrays, param_priors, rand=True):
     else:
         R_star = R
         M_star = M
-    
-    # G in R⊙^3 / M⊙ days^2
-    # Should make this a function
-    G = 2942.2062
-    a = (P**2 * M_star / (4*np.pi**2) * G)**(1/3) / R_star
-    # Compute inclination from 
-    inc = np.arccos(b / a) * 180/np.pi
-    
-    # Initialize Batman Transit
-    bm_params = batman.TransitParams()
-    bm_params.per, bm_params.rp, bm_params.inc = P, Rp, inc
-    bm_params.t0 = 0
-    bm_params.limb_dark = "quadratic"
-    bm_params.u = u
-    bm_params.a = a
-    bm_params.ecc = 0
-    bm_params.w = 90
-    
-    # Make Model
-    m = batman.TransitModel(bm_params, bjd_folded)
+        
+    light_curve = batman_model(bjd_folded, 0, P, Rp, b, R_star, M_star, u)
     
     # Compute Log Posterior probability
-    chi2 = -0.5 * sum((m.light_curve(bm_params) -  fnorm)**2 / efnorm**2)
+    chi2 = -0.5 * sum((light_curve -  fnorm)**2 / efnorm**2)
     
     # Good up to an additive constant
     # print(chi2, prior_prob)
@@ -336,7 +319,7 @@ def plot_chain_evo(chain, titles, savefig=None, show=False, title=None):
         plt.show()
         
 
-def transit_snr(chain, bjd, fnorm_detrend, star_params):
+def mcmc_transit_snr(chain, bjd, fnorm_detrend, star_params):
     T0 = np.median(chain[:,0])
     P = np.median(chain[:,1])
     Rp = np.median(chain[:,2])
@@ -382,4 +365,4 @@ def confidence_interval(chain, perc=0.95):
         
         intervals.append([left, right])
         
-    return intervals    
+    return intervals
