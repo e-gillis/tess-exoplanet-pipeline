@@ -1,7 +1,9 @@
-from get_tess_data import *
-from detrending_modules import *
-from misc_functions import *
-from planet_search import *
+import get_tess_data as gtd
+import detrending_modules as dt
+import planet_search as ps
+import vetting as vet
+import mcmc_fitting as mc
+import misc_functions as misc
+
 from pipeline_classes import *
-from vetting import *
-from mcmc_fitting import *
+from constants import *
