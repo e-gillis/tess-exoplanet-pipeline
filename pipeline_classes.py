@@ -2,23 +2,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 
-import scipy
 from scipy.optimize import curve_fit
 import emcee
+from multiprocessing import Pool
 
 # Set TLS minimum grid for fitting
-from transitleastsquares import tls_constants
-tls_constants.MINIMUM_PERIOD_GRID_SIZE = 2
+from transitleastsquares import tls_constants, catalog_info, transitleastsquares
+tls_constants.MINIMUM_PERIOD_GRID_SIZE = 5
 
-from get_tess_data import *
-from detrending_modules import * 
-from planet_search import *
-from misc_functions import *
-from mcmc_fitting import transit_log_prob
+import get_tess_data as gtd
+import detrending_modules as dt
+import planet_search as ps
 import vetting as vet
+import mcmc_fitting as mc
+import misc_functions as misc
+
+from constants import *
 
 VERSION = "0.3"
-
 
 class TransitSearch:
     """
@@ -41,7 +42,7 @@ class TransitSearch:
         
         # Star Parameters
         Teff, logg, radius, radius_err,\
-        mass, mass_err, RA, Dec = get_star_info(tic)
+        mass, mass_err, RA, Dec = gtd.get_star_info(tic)
         
         u = catalog_info(TIC_ID=tic)[0]
         
@@ -62,19 +63,21 @@ class TransitSearch:
         self.planet_candidates = []
     
     
-    def transit_search(self, threshold=6, max_iterations=5, 
+    def transit_search(self, threshold=6, max_iterations=5, threads=64,
                        grazing_search=True, progress=True):
         
         self.results = []
         
         for lc in self.lightcurves:
-            period_max = 30 #min((lc.bjd[-1] - lc.bjd[0])/2, 30)
-            results_list = find_transits(lc.bjd, lc.fnorm_detrend, 
-                                         grazing_search=grazing_search,
-                                         period_min=1, period_max=period_max,
-                                         show_progress_bar=progress, 
-                                         R_star=self.radius, M_star=self.mass,
-                                         u=self.u)
+            results_list = ps.find_transits(lc.bjd, lc.fnorm_detrend, 
+                                            grazing_search=grazing_search,
+                                            period_min=1, period_max=MAX_PERIOD,
+                                            threshold=SDE_CUTOFF
+                                            show_progress_bar=progress, 
+                                            threads=TLS_THREADS,
+                                            R_star=self.radius,
+                                            M_star=self.mass,
+                                            u=self.u)
             
             self.results.append(results_list)
     
@@ -100,7 +103,7 @@ class TransitSearch:
             vetting_array += vet.odd_even_mismatch(results)
             
             # SNR cut
-            vetting_array += vet.low_snr(results, lc)
+            vetting_array += vet.low_snr(results, lc, cutoff=SNR_VET)
             
             # Check TLS edges
             # vetting_array += vet.tls_edge(results)
@@ -110,11 +113,12 @@ class TransitSearch:
      
     def cc_results(self, vet_results=True):
         
-        if vet_results and (self.result_tags is None):
+        if vet_results:
             self.vet_results
         
         cut_results_list = vet.cut_results(self.results, self.result_tags)
-        correlated_results = vet.correlate_results(cut_results_list)
+        correlated_results = vet.correlate_results(cut_results_list, ptol=P_TOL, 
+                                                   depthtol=DEPTH_TOL, durtol=DURTOL)
         
         return correlated_results
     
@@ -127,8 +131,8 @@ class TransitSearch:
             
         for pc in self.planet_candidates:
             pc.fit_planet_params()
-            if pc.snr > 2:
-                pc.run_mcmc()
+            if pc.snr > SNR_MCMC:
+                pc.run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN)
     
     
     def plot_transits(self):
@@ -210,14 +214,14 @@ class LightCurve():
                 bjd, fnorm, efnorm = bjd_s[i], fnorm_s[i], efnorm_s[i]
                 gd = False
                 try:
-                    fnorm_detrend, gd = gaussian_detrend(bjd, fnorm, efnorm)
+                    fnorm_detrend, gd = dt.gaussian_detrend(bjd, fnorm, efnorm)
                     if 'gaussian' not in self.detrend_methods:
                         self.detrend_methods.append('gaussian')
                 except:
                     pass
                 
                 if not gd:
-                    fnorm_detrend = spline_detrend(bjd, fnorm, efnorm)
+                    fnorm_detrend = dt.spline_detrend(bjd, fnorm, efnorm)
                     if 'spline' not in self.detrend_methods:
                         self.detrend_methods.append('spline')
                 
@@ -226,13 +230,12 @@ class LightCurve():
             self.fnorm_detrend = np.concatenate(fnorm_detrend_s)
                 
         # Sigma Clip with noise
-        clip = upper_sigma_clip(self.fnorm_detrend, sig=5)
+        clip = misc.upper_sigma_clip(self.fnorm_detrend, sig=5)
         self.fnorm_detrend[~clip] = np.random.normal(loc=1, 
                                     scale=np.std(self.fnorm_detrend[clip]),
                                     size=sum(~clip))
             
             
-    
     # Lightcurve is already split!
     def gaussian_detrend_lc(self, cont=False):
         if cont:
@@ -240,7 +243,7 @@ class LightCurve():
         else:
             fnorm = self.fnorm
         
-        self.fnorm_detrend, self.detrended = gaussian_detrend(self.bjd, 
+        self.fnorm_detrend, self.detrended = dt.gaussian_detrend(self.bjd, 
                                                               fnorm,    
                                                               self.efnorm)
         self.detrend_methods.append('gaussian')
@@ -253,7 +256,7 @@ class LightCurve():
         else:
             fnorm = self.fnorm
         
-        self.fnorm_detrend, self.detrended = median_detrend(fnorm, 400)
+        self.fnorm_detrend, self.detrended = dt.median_detrend(fnorm, 400)
         self.detrend_methods.append('median')
         return self.detrended
     
@@ -264,8 +267,8 @@ class LightCurve():
         else:
             fnorm = self.fnorm
             
-        self.fnorm_detrend, self.detrended = spline_detrend(self.bjd, fnorm,
-                                                            self.efnorm)
+        self.fnorm_detrend, self.detrended = dt.spline_detrend(self.bjd, fnorm,
+                                                               self.efnorm)
         self.detrend_methods.append('spline')
         return self.detrended
     
@@ -316,10 +319,10 @@ class LightCurve():
 
             
         for i in range(nrows):
-            folded_t = phase_fold(self.bjd, results[i].period, results[i].T0)
+            folded_t = misc.phase_fold(self.bjd, results[i].period, results[i].T0)
             axs[i].scatter(folded_t, self.fnorm_detrend, s=0.2)
 
-            model_t = phase_fold(results[i]["model_lightcurve_time"], 
+            model_t = misc.phase_fold(results[i]["model_lightcurve_time"], 
                                  results[i]['period'], results[i].T0)
             sorts = np.argsort(model_t)
             axs[i].plot(model_t[sorts], 
@@ -331,7 +334,7 @@ class LightCurve():
 
             f_sorts = np.argsort(folded_t)
 
-            phase_series = bin_curve(folded_t[f_sorts], 
+            phase_series = misc.bin_curve(folded_t[f_sorts], 
                                      self.fnorm_detrend[f_sorts],
                                      self.efnorm[f_sorts], 
                                      even_bins=True,
@@ -357,7 +360,7 @@ class TIC_LightCurve(LightCurve):
     def __init__(self, tic):
                 
         # Make sure get tess data 
-        lc_params = get_tess_data(tic)
+        lc_params = gtd.get_tess_data(tic)
         bjd, fnorm, efnorm, sectors, qual_flags, texp = lc_params
         
         LightCurve.__init__(self, bjd, fnorm, efnorm, sectors, qual_flags, texp)    
@@ -413,8 +416,8 @@ class PlanetCandidate:
         
         # fit other params with curve_fit
         best_period = best_result.period
-        transit_model = generate_transit_model(best_period, self.ts.radius, 
-                                               self.ts.mass, self.ts.u)
+        transit_model = misc.generate_transit_model(best_period, self.ts.radius, 
+                                                    self.ts.mass, self.ts.u)
         T0, T0_delta = best_result.T0, best_result.duration
         bounds = np.array(((T0-T0_delta, T0+T0_delta), 
                           (0, 1), 
@@ -438,27 +441,62 @@ class PlanetCandidate:
         a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R
         
         self.duration = P / np.pi * np.arcsin(1/a)
-        N = get_Ntransits(self.period, self.T0, self.duration, bjd)
+        N = misc.get_Ntransits(self.period, self.T0, self.duration, bjd)
         self.snr = depth / noise * N**0.5
     
     
-    def run_mcmc(self, nsteps=4000, nwalkers=48, progress=True):
+    def run_mcmc(self, nsteps=4000, nwalkers=48, burn_in=2000, progress=True):
         # Prepare priors and walker positions
-        priors, lc_arrays, walkers = ps_mcmc_prep(self, self.ts, nwalkers)
+        priors, lc_arrays, walkers = mc.ps_mcmc_prep(self, self.ts, nwalkers)
         star_params = (self.ts.radius, self.ts.radius_err, 
                        self.ts.mass, self.ts.mass_err, self.ts.u)
         self.priors = priors
         
         # Run the MCMC
-        ensam = emcee.EnsembleSampler(nwalkers, 4, transit_log_prob, 
-                                      args=(star_params, lc_arrays, priors))
-        ensam.run_mcmc(walkers, nsteps=nsteps, progress=progress)
+        with Pool() as pool:
+            ensam = emcee.EnsembleSampler(nwalkers, 4, mc.transit_log_prob, pool=pool,
+                                          args=(star_params, lc_arrays, priors))
+            ensam.run_mcmc(walkers, nsteps=nsteps, progress=progress)
         
         # Save the chain
         self.full_mcmc_chain = ensam.get_chain()
-        self.mcmc_chain = self.full_mcmc_chain[:2000].reshape((-1, 4))
+        self.mcmc_chain = self.full_mcmc_chain[:burn_in].reshape((-1, 4))
     
+    
+    def chain_evos_plot(self, savefig=None, show=True, title=None):
+        if self.full_mcmc_chain is None:
+            print("run_mcmc method must be run first!")
+            return None
 
+        mc.plot_chain_evo(self.full_mcmc_chain,
+                       title=title, savefig=savefig, show=show)
+
+
+    def chain_dists_plot(self, savefig=None, show=True, title=None):
+        if self.mcmc_chain is None:
+            print("run_mcmc method must be run first!")
+            return None
+        
+        mc.plot_chain_dists(self.mcmc_chain, self.priors, 
+                            title=title, savefig=savefig, show=show)
+        
+    def model_plot(self, savefig=None, show=True, title=None):
+        if self.mcmc_chain is None:
+                print("run_mcmc method must be run first!")
+                return None
+        
+        mc.plot_model(self, self.ts, 
+                      savefig=savefig, show=show, title=title)
+    
+    def corner_plot(self, savefig=None, show=True, title=None):
+        if self.mcmc_chain is None:
+            print("run_mcmc method must be run first!")
+            return None
+        
+        mc.plot_chain_corner(self.mcmc_chain, 
+                             savefig=savefig, show=show, title=title)
+    
+    
 ### Loading back objects
 
 def load_ts(path):      
@@ -466,37 +504,3 @@ def load_ts(path):
         loaded_ts = pickle.load(f)
     return loaded_ts
 
-
-### MCMC Temp Functions ##
-def ps_mcmc_prep(pc, ts, nwalkers):
-    best_result = pc.best_result
-    
-    P, P_sigma = best_result.period, best_result.period_uncertainty
-    T0, T0_sigma = best_result.T0, best_result.duration
-    
-    bjd, fnorm, efnorm = np.concatenate([lc.bjd for lc in ts.lightcurves]),\
-                np.concatenate([lc.fnorm_detrend for lc in ts.lightcurves]),\
-                np.concatenate([lc.efnorm for lc in ts.lightcurves])
-    bjd_folded = (bjd - T0 + P/2) % P - P/2
-    cut = np.abs(bjd_folded) < 5*pc.duration
-    bjd_c, fnorm_c, efnorm_c = bjd[cut], fnorm[cut], efnorm[cut]    
-    lc_arrays = (bjd_c, fnorm_c, efnorm_c)
-    
-    T0_model = scipy.stats.norm(T0, T0_sigma)
-    # Period prior informed by period grid? It already has uncertainty
-    P_model = scipy.stats.norm(P, P_sigma)
-    # Uniform in log space? Linear log cutoff depth sets max Rp/R*
-    Rp_model = scipy.stats.loguniform(0.005, 0.5)
-    # Uniform prior on impact parameter?
-    b_model = scipy.stats.uniform(0, 0.95)
-    priors = [T0_model, P_model, Rp_model, b_model]
-    
-    Rp = (1-best_result.depth)**0.5 
-    Rp_sigma = Rp/20
-    Rp_dist = scipy.stats.norm(Rp, Rp_sigma)
-    
-    walker_samplers = [T0_model, P_model, Rp_dist, b_model]
-    walker_pos = [sampler.rvs(size=nwalkers) for sampler in walker_samplers]
-    walkers = np.array(walker_pos).T
-    
-    return priors, lc_arrays, walkers
