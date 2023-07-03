@@ -72,7 +72,7 @@ class TransitSearch:
             results_list = ps.find_transits(lc.bjd, lc.fnorm_detrend, 
                                             grazing_search=grazing_search,
                                             period_min=1, period_max=MAX_PERIOD,
-                                            threshold=SDE_CUTOFF
+                                            threshold=SDE_CUTOFF,
                                             show_progress_bar=progress, 
                                             threads=TLS_THREADS,
                                             R_star=self.radius,
@@ -118,7 +118,7 @@ class TransitSearch:
         
         cut_results_list = vet.cut_results(self.results, self.result_tags)
         correlated_results = vet.correlate_results(cut_results_list, ptol=P_TOL, 
-                                                   depthtol=DEPTH_TOL, durtol=DURTOL)
+                                                   depthtol=DEPTH_TOL, durtol=DUR_TOL)
         
         return correlated_results
     

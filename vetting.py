@@ -110,7 +110,8 @@ def cut_results(results_list, result_tags):
     return cut_results_list
 
 
-def correlate_results(results_list, check_T0=True):
+def correlate_results(results_list, ptol=0.2, durtol=0.2, depthtol=0.4, 
+                      check_T0=True):
     """Correlate results whose periods are sufficiently close
     """
     # Empty list
@@ -144,16 +145,16 @@ def correlate_results(results_list, check_T0=True):
             # See how far off the period is
             P_ratio = max((flattened_results[i].period/P, 
                            P/flattened_results[i].period))
-            period_matches = abs(round(P_ratio) - P_ratio) < 0.02*P_ratio
+            period_matches = abs(round(P_ratio) - P_ratio) < ptol*P_ratio
 
             # Check the depth
             depth_matches = math.isclose(depth, 
                                          1-flattened_results[i].depth,
-                                         rel_tol=0.4)
+                                         rel_tol=depthtol)
             # Check the duration
             duration_matches = math.isclose(duration, 
                                             flattened_results[i].duration,
-                                            rel_tol=0.2)
+                                            rel_tol=durtol)
             
             if check_T0:
                 T0_diff = abs(flattened_results[i].T0 - T0)

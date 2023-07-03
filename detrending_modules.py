@@ -7,7 +7,7 @@ from gls import Gls
 
 from scipy.signal import savgol_filter
 
-from misc_functions import *
+import misc_functions as misc
 
 import wotan as w
 
@@ -60,7 +60,7 @@ def spline_detrend(bjd, fnorm, efnorm, iterative=False):
 
 def rotation_check(bjd, fnorm, efnorm):
     # Should I bin the light curve?
-    bjd, fnorm, efnorm = bin_curve(bjd, fnorm, efnorm)
+    bjd, fnorm, efnorm = misc.bin_curve(bjd, fnorm, efnorm)
     T = bjd[-1] - bjd[0]
     
     gls = Gls(((bjd, fnorm, efnorm)), fend=10, fbeg=0.1/(bjd[-1]-bjd[0]))
@@ -69,10 +69,10 @@ def rotation_check(bjd, fnorm, efnorm):
     
     theta = gls.best['amp'], gls.best['T0']
     Prot, offset = gls.best['P'], gls.best['offset']
-    model = sincurve(bjd, *theta, Prot, offset)
+    model = misc.sincurve(bjd, *theta, Prot, offset)
     model_null = np.ones(len(bjd)) * offset
     
-    dBIC = DeltaBIC(fnorm, efnorm, model, model_null, k=4)
+    dBIC = misc.DeltaBIC(fnorm, efnorm, model, model_null, k=4)
     
     return (dBIC<=-10 and Prot < T/2), Prot
 

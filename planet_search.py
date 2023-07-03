@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from misc_functions import *
+import misc_functions as misc
 
 
 from transitleastsquares import transitleastsquares, transit_mask
@@ -37,6 +37,7 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True
     # Look for the first planet
     model = transitleastsquares(bjd, fnorm)
     result = model.power(**tls_kwargs, use_threads=threads)
+
     
     # Check if a planet candidate is found
     if result["SDE"] < threshold:
