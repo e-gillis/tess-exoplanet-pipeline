@@ -28,7 +28,7 @@ def get_star_info(tic):
     return Teff, logg, radius, radius_err, mass, mass_err, RA, Dec
 
 
-def get_tess_data(tic, minsector=1, maxsector=55):
+def get_tess_data(tic, minsector=1, maxsector=65):
     """Return timeseries arrays based on the tic
     
     Series Needed:

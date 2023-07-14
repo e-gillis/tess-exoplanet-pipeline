@@ -52,12 +52,11 @@ def bin_curve(bjd, fnorm, efnorm, bin_width=10, even_bins=False,
     
     for i in range(len(bin_indeces)-1):
         j, k = bin_indeces[i], bin_indeces[i+1]
-        
         bin_bjd[i] = np.mean(bjd[j:k])
         bin_fnorm[i] = np.median(fnorm[j:k])
-        bin_efnorm[i] = (np.std(fnorm[j:k])**2 + np.mean(efnorm[j:k])**2)**0.5
+        bin_efnorm[i] = ((np.std(fnorm[j:k])**2+\
+                          np.mean(efnorm[j:k])**2)/(k-j))**0.5
         
-    
     return bin_bjd, bin_fnorm, bin_efnorm
 
 
@@ -106,17 +105,25 @@ def phase_fold(bjd, P, T0):
     return folded_t
 
 
-def plot_result(result):
-    plt.figure(figsize=(6,3))
+def plot_result(result, savefig=None, show=True, fig=None, ax=None):
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6,3))
+    
     plt.axline((0, 6),(1, 6))
-    plt.xlim(min(result.periods), max(result.periods))
-    plt.plot(result.periods, result.power, color='black', lw=0.5)
+    ax.set_xlim(min(result.periods), max(result.periods))
+    ax.plot(result.periods, result.power, color='black', lw=0.5)
     for n in range(1, 20):
-        plt.axvline(n*result.period, alpha=0.4, lw=1, linestyle="dashed")
-        plt.axvline(result.period/n, alpha=0.4, lw=1, linestyle="dashed")
-    plt.xlabel("Period (Days)")
-    plt.ylabel("SDE")
-    plt.show()
+        ax.axvline(n*result.period, alpha=0.4, lw=1, linestyle="dashed")
+        ax.axvline(result.period/n, alpha=0.4, lw=1, linestyle="dashed")
+    ax.set_xlabel("Period (Days)")
+    ax.set_ylabel("SDE")
+    
+    ax.set_title(f'SDE Peak at {round(result.period, 4)} Days')
+    
+    if savefig:
+        fig.savefig(savefig, bbox_inches='tight')
+    if show:
+        plt.show()
     
 
 def get_Ntransits(P, T0, duration, bjd):

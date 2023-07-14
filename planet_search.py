@@ -51,7 +51,7 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True
     while i <= max_iterations:
         # Mask transits
         bjd, fnorm = mask_transits(bjd, fnorm, result_list[-1].period, 
-                                   result_list[-1].duration, 
+                                   3*result_list[-1].duration, 
                                    result_list[-1].T0, 
                                    method=method)
         
@@ -91,7 +91,7 @@ def mask_transits(bjd, fnorm, period, duration, T0, method):
     
     # Avoid aliasing at all costs
     bjd, fnorm = bjd.copy(), fnorm.copy()
-    intransit = transit_mask(bjd, period, 2*duration, T0)
+    intransit = transit_mask(bjd, period, duration, T0)
     
     if method == 'remove':
         return bjd[~intransit], fnorm[~intransit]

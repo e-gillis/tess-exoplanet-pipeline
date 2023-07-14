@@ -61,7 +61,8 @@ class TransitSearch:
         
         # Space for planet Candidates
         self.planet_candidates = []
-    
+        self.planet_candidates_reject = []
+        
     
     def transit_search(self, threshold=6, max_iterations=5, threads=64,
                        grazing_search=True, progress=True):
@@ -70,19 +71,20 @@ class TransitSearch:
         
         for lc in self.lightcurves:
             results_list = ps.find_transits(lc.bjd, lc.fnorm_detrend, 
-                                            grazing_search=grazing_search,
-                                            period_min=1, period_max=MAX_PERIOD,
-                                            threshold=SDE_CUTOFF,
-                                            show_progress_bar=progress, 
+                                            grazing_search = grazing_search,
+                                            period_min = MIN_PERIOD,
+                                            period_max = MAX_PERIOD,
+                                            threshold = SDE_CUTOFF,
+                                            show_progress_bar = progress, 
                                             threads=TLS_THREADS,
-                                            R_star=self.radius,
-                                            M_star=self.mass,
-                                            u=self.u)
+                                            method = MASK_METHOD,
+                                            R_star = self.radius,
+                                            M_star = self.mass,
+                                            u = self.u)
             
             self.results.append(results_list)
     
     
-    # Is there any point in having a continuous lightcurve?
     def vet_results(self):
         if self.results is None:
             print("Must run TLS before vetting results")
@@ -117,22 +119,39 @@ class TransitSearch:
             self.vet_results
         
         cut_results_list = vet.cut_results(self.results, self.result_tags)
-        correlated_results = vet.correlate_results(cut_results_list, ptol=P_TOL, 
-                                                   depthtol=DEPTH_TOL, durtol=DUR_TOL)
+        correlated_results = vet.correlate_results(cut_results_list, 
+                             ptol=P_TOL, depthtol=DEPTH_TOL, durtol=DUR_TOL)
         
         return correlated_results
     
     
-    def get_planet_candidates(self):
+    def get_planet_candidates(self, progress=True):
         correlated_results = self.cc_results()
+        planet_candidates = []
         
+        # Collect Planet Candidates
         for c_results in correlated_results:
-            self.planet_candidates.append(PlanetCandidate(self, c_results))
-            
-        for pc in self.planet_candidates:
+            pc = PlanetCandidate(self, c_results)
             pc.fit_planet_params()
+            
             if pc.snr > SNR_MCMC:
-                pc.run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN)
+                self.planet_candidates.append(pc)
+            else:
+                self.planet_candidates_reject.append(pc)
+        
+        # Find PCs with overlapping transits
+        full_bjd = np.concatenate([lc.bjd for lc in self.lightcurves])
+        snr_sorts = np.argsort([pc.snr for pc in planet_candidates])[::-1]
+        sorted_pcs = [planet_candidates[i] for i in snr_sorts]
+        
+        # Check for overlap
+        # pcs, cut_pcs = vet.pc_overlap(sorted_pcs, full_bjd)
+        self.planet_candidates.extend(planet_candidates)
+        # self.planet_candidates_reject.extend(cut_pcs)
+        
+        # Run MCMC
+        for pc in self.planet_candidates:
+            pc.run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN, progress=progress)
     
     
     def plot_transits(self):
@@ -308,14 +327,13 @@ class LightCurve():
 
     
     
-    def plot_results(self, results, phase_range=0.1, fnorm_range=None, 
-                     show=True, savefig=None):
+    def plot_results(self, results, fnorm_range=None, show=True, savefig=None):
         nrows = len(results)
         fig, axs = plt.subplots(nrows=nrows, ncols=1, 
                                 figsize=(6,3*nrows),
                                 sharex='col', sharey=True,
                                 gridspec_kw={"wspace":0.02, "hspace":0.02},
-                                squeeze=False)
+                                squeeze=True)
 
             
         for i in range(nrows):
@@ -323,12 +341,12 @@ class LightCurve():
             axs[i].scatter(folded_t, self.fnorm_detrend, s=0.2)
 
             model_t = misc.phase_fold(results[i]["model_lightcurve_time"], 
-                                 results[i]['period'], results[i].T0)
+                                      results[i]['period'], results[i].T0)
             sorts = np.argsort(model_t)
             axs[i].plot(model_t[sorts], 
                         results[i]["model_lightcurve_model"][sorts], 
                         color='r', ls="--")
-            axs[i].set_xlim(-phase_range/2, phase_range/2)
+            axs[i].set_xlim(-results[i]['duration'], results[i]['duration'])
             axs[i].grid()
             axs[i].set_ylabel(r"$F_{norm}$")
 
@@ -338,7 +356,7 @@ class LightCurve():
                                      self.fnorm_detrend[f_sorts],
                                      self.efnorm[f_sorts], 
                                      even_bins=True,
-                                     bin_length = 0.0025)
+                                     bin_length = results[i]['duration']/10)
             bin_phase, bin_fnorm, bin_efnorm = phase_series
 
             axs[i].errorbar(bin_phase, bin_fnorm, bin_efnorm,
@@ -434,14 +452,19 @@ class PlanetCandidate:
         
         # Get SNR Params for the transit
         depth = self.Rp**2
-        noise = np.median(np.abs(fnorm - np.median(fnorm)))
         
         R, M = self.ts.radius, self.ts.mass
         G = 2942.2062
         a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R
-        
         self.duration = P / np.pi * np.arcsin(1/a)
+        
         N = misc.get_Ntransits(self.period, self.T0, self.duration, bjd)
+        
+        # Get the noise
+        binned_fnorm = misc.bin_curve(bjd, fnorm, efnorm, even_bins=True, 
+                                      bin_length=self.duration)[1]
+        noise = np.std(binned_fnorm)
+        
         self.snr = depth / noise * N**0.5
     
     
@@ -461,7 +484,19 @@ class PlanetCandidate:
         # Save the chain
         self.full_mcmc_chain = ensam.get_chain()
         self.mcmc_chain = self.full_mcmc_chain[:burn_in].reshape((-1, 4))
-    
+        
+        
+    def plot_results(self, savefig=None, show=True, title=None):
+        fig, axs = plt.subplots(ncols=1, nrows=len(self.results), 
+                                figsize=(6, 3*len(self.results)), squeeze=False)
+        
+        for i, result in enumerate(self.results):
+            misc.plot_result(result, show=False, fig=fig, ax=axs[0][i])
+            
+        if savefig is not None:
+            fig.savefig(savefig, bbox_inches='tight')
+        if show:
+            plt.show()
     
     def chain_evos_plot(self, savefig=None, show=True, title=None):
         if self.full_mcmc_chain is None:

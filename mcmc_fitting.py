@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from transitleastsquares import transit_mask
-from misc_functions import batman_model
+from misc_functions import batman_model, bin_curve
 from scipy.stats import norm, uniform, loguniform
 
 import emcee
@@ -204,18 +204,22 @@ def plot_model(pc, ts, savefig=None, show=False, title=None):
     bjd_folded = (bjd - T0 + P/2) % P - P/2
     
     sort = np.argsort(bjd_folded)
-    bjd_folded, fnorm = bjd_folded[sort], fnorm[sort]
+    bjd_folded, fnorm, efnorm = bjd_folded[sort], fnorm[sort], efnorm[sort]
     
-    bins = np.arange(0, len(bjd_folded), 50)
-    fnorm_mean, fnorm_std = np.array([[np.mean(fnorm[bins[i]:bins[i+1]]), 
-                                       np.std(fnorm[bins[i]:bins[i+1]])] 
-                                       for i in range(len(bins)-1)]).T
-    bjd_mean, bjd_std = np.array([[np.mean(bjd_folded[bins[i]:bins[i+1]]), 
-                                   np.std(bjd_folded[bins[i]:bins[i+1]])] 
-                                  for i in range(len(bins)-1)]).T
+    # bins = np.arange(0, len(bjd_folded), 50)
+    # fnorm_mean, fnorm_std = np.array([[np.mean(fnorm[bins[i]:bins[i+1]]), 
+    #                                    np.std(fnorm[bins[i]:bins[i+1]])] 
+    #                                    for i in range(len(bins)-1)]).T
+    # bjd_mean, bjd_std = np.array([[np.mean(bjd_folded[bins[i]:bins[i+1]]), 
+    #                                np.std(bjd_folded[bins[i]:bins[i+1]])] 
+    #                               for i in range(len(bins)-1)]).T
+    
+    bin_bjd, bin_fnorm, bin_efnorm =  bin_curve(bjd_folded, fnorm, efnorm,
+                                                even_bins=True, 
+                                                bin_length=pc.duration/10)
     
     plt.scatter(bjd_folded, fnorm, s=1)
-    plt.errorbar(bjd_mean, fnorm_mean, fnorm_std/50**0.5, ls='', 
+    plt.errorbar(bin_bjd, bin_fnorm, bin_efnorm, ls='', 
                  capsize=3, marker='.', color='red')
     
     bm_curve = batman_model(bjd_folded, 0, P, Rp, b, R, M, u)
