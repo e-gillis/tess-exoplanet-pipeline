@@ -1,13 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import misc_functions as misc
-
+from scipy.optimize import curve_fit
 
 from transitleastsquares import transitleastsquares, transit_mask
 from transitleastsquares import catalog_info
 
-def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True, 
-                  threads=1, method='noise', **tls_kwargs):
+def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4,
+                  grazing_search=True, threads=1, method='noise', **tls_kwargs):
     """Return a list of TLS transit candidates from a given lightcurve.
     
     === Parameters ===
@@ -37,7 +37,6 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True
     # Look for the first planet
     model = transitleastsquares(bjd, fnorm)
     result = model.power(**tls_kwargs, use_threads=threads)
-
     
     # Check if a planet candidate is found
     if result["SDE"] < threshold:
@@ -48,12 +47,15 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True
     
     # Start looping finding more planets
     grazing = False
-    while i <= max_iterations:
+    while i < max_iterations:
         # Mask transits
-        bjd, fnorm = mask_transits(bjd, fnorm, result_list[-1].period, 
-                                   3*result_list[-1].duration, 
-                                   result_list[-1].T0, 
-                                   method=method)
+        if method == "model":
+            fnorm = model_mask(bjd, fnorm, efnorm, result, star_params)
+        else:
+            bjd, fnorm = mask_transits(bjd, fnorm, result_list[-1].period, 
+                                       2*result_list[-1].duration, 
+                                       result_list[-1].T0, 
+                                       method=method)
         
         # Look for planets again with transits masked
         model = transitleastsquares(bjd, fnorm)
@@ -86,6 +88,26 @@ def find_transits(bjd, fnorm, threshold=6, max_iterations=5, grazing_search=True
 
 
 def mask_transits(bjd, fnorm, period, duration, T0, method):
+    """
+    Mask transits in a given lightcurve using the method specified.
+
+    === Arguments ===
+    bjd: numpy array
+        The bjd timeseries for the lightcurve
+    fnorm: numpy array
+        Normalized detrended lightcurve
+    period: float
+        Period of the transit signal
+    duration: float
+        Duration of the transit
+    T0: float
+        Middle transit time of the first transit in the timeseries
+    method: string ('noise', 'remove')
+        Method to mask transits with: Noise overwrites the intransit timeseries
+        with gaussian noise matching the mean and rms of the full timeseries;
+        Remove excises the intransit data from the timeseries
+
+    """
     # Make sure method is there
     assert method in ['remove', 'noise']
     
@@ -102,3 +124,92 @@ def mask_transits(bjd, fnorm, period, duration, T0, method):
         fnorm[intransit] = np.random.normal(loc=1, scale=rms, 
                                             size=sum(intransit))
         return bjd, fnorm
+
+
+def fit_transit_model(bjd, fnorm, efnorm, result, star_params, r_update=True):
+    """
+    Fit a transit model to a lightcurve informed by a TLS result using scipy's
+    curve_fit. Retrun the optimal planet paramaters.
+
+    === Arguments ===
+    bjd: numpy array
+        The bjd timeseries for the lightcurve
+    fnorm: numpy array
+        Normalized detrended lightcurve
+    efnorm: numpy array
+        Error on the normalized flux
+    result: TLS Result
+        TLS result to inform the transit model fitting
+    star_params: (float, float, (float, float))
+        Radius, mass and limb darkening parameters of the host star
+        
+    === Returns ===
+    T0: float
+        Time of mid-transit for the first transit in the timeseries
+    period: float
+        Period of the transits
+    Rp: float
+        Ratio of the planet's radius to the star's radius
+    b: float
+        Impact parameter of the transit
+    """
+    # Unpack Parameters
+    R, M, u = star_params
+    
+    # Use period, T0, duration, 
+    T0, T0_delta = result.T0, result.duration
+    period, p_delta = result.period, abs(result.period_uncertainty)
+
+    # Transit model to fit parameters in
+    transit_model = lambda bjd, T0, P, Rp, b:\
+                   misc.batman_model(bjd, T0, P, Rp, b, R, M, u)
+
+    # Set Bounds
+    bounds = np.array(((T0-T0_delta, T0+T0_delta),
+                      (period-p_delta, period+p_delta),
+                      (0, 1), 
+                      (0, 1))).T
+    p0 = (T0, period, (1-result.depth)**0.5, 0.5)
+    # Run the curve fit
+    popt, pcov = curve_fit(transit_model, bjd, fnorm, p0=p0, bounds=bounds,
+                           sigma=efnorm)
+    # Unpack variables and return
+    T0, P, Rp, b = popt
+
+    if r_update:
+        result.period = P
+        result.T0 = T0
+        result.depth = 1 - Rp**2
+    
+    return T0, P, Rp, b
+
+
+def model_mask(bjd, fnorm, efnorm, result, star_params):
+    """
+    Model a transit based on a TLS result and mask it out of a given lightcurve
+
+    === Arguments ===
+    bjd: numpy array
+        The bjd timeseries for the lightcurve
+    fnorm: numpy array
+        Normalized detrended lightcurve
+    efnorm: numpy array
+        Error on the normalized flux
+    result: TLS Result
+        TLS result to inform the transit model fitting
+    star_params: (float, float, (float, float))
+        Radius, mass and limb darkening parameters of the host star
+        
+    === Returns ===
+    masked_fnorm: numpy array
+        Residual flux after the transit has been modeled and subtracted
+    """
+    T0, P, Rp, b = fit_transit_model(bjd, fnorm, efnorm, result, star_params)
+    R, M, u = star_params
+    transit_model = misc.batman_model(bjd, T0, P, Rp, b, R, M, u)
+
+    return fnorm - transit_model + 1
+    
+
+
+    

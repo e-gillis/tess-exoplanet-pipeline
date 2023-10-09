@@ -4,6 +4,7 @@ from transitleastsquares import transit_mask
 import batman
 
 
+# Log likelyhood of a model
 def lnlike(y, ey, model):
     assert np.all(np.isfinite(np.ascontiguousarray(ey)))
     return -.5 * np.nansum((y-model)**2 / ey**2)
@@ -14,8 +15,9 @@ def DeltaBIC(y, ey, model, modelnull, k=5, knull=1):
     k is number of free parameters
     '''
     # theta = {P,T0,D,Z,baseline}
-    BIC_model = k*np.log(y.size) - 2*lnlike(y, ey, model)   
-    BIC_null = knull*np.log(y.size) - 2*lnlike(y, ey, modelnull)
+    BIC_model = k*np.log(len(y)) - 2*lnlike(y, ey, model)   
+    BIC_null = knull*np.log(len(y)) - 2*lnlike(y, ey, modelnull)
+    
     return BIC_model - BIC_null
 
 
@@ -24,7 +26,7 @@ def sincurve(x, amp, T0, P, offset):
 
 
 def bin_curve(bjd, fnorm, efnorm, bin_width=10, even_bins=False,
-              bin_length=0.001):
+              bin_length=0.007):
     """Bin a given lightcurve 
     """
     if even_bins:
@@ -134,10 +136,27 @@ def get_Ntransits(P, T0, duration, bjd):
     return N
     
 
+def transit_duration(M, R, P, Rp, b):
+    G = 2942.2062
+    a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R
+    duration = P/np.pi * np.arcsin(((Rp+1)**2-b**2)**0.5/a)
+    
+    return duration
+
+
+def transit_duration_simple(M, R, P):
+    # G in R⊙^3 / M⊙ days^2
+    G = 2942.2062
+    a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R
+    duration = P/np.pi * np.arcsin(1/a)
+    
+    return duration
+
+    
+
 ## Modeling Functions ##
 
 def batman_model(bjd, T0, P, Rp, b, R, M, u):
-    # G in R⊙^3 / M⊙ days^2
     # Should make this a function
     G = 2942.2062
     a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R

@@ -6,12 +6,15 @@ import misc_functions as misc
 
 
 # Dictionary for tags
-TAG_DICT = {1: 'Rotation Signal', 
-            2: 'Bad Spectrum', 
-            4: 'Odd Even Mismatch', 
-            8: 'Duration too long', 
-            16:'Low SNR',
-            32:'TLS Edge'}
+TAG_DICT = {1:  'Rotation Signal', 
+            2:  'Bad Spectrum', 
+            4:  'Odd Even Mismatch', 
+            8:  'Duration too long', 
+            16: 'Low SNR',
+            32: 'TLS Edge',
+            64: 'LC Edge',
+            128:'Deep single transit',
+            256:'Inf period uncertainty'}
 
 
 def rotation_signal(lc, results, tag=1):
@@ -50,7 +53,6 @@ def bad_tls_spectrum(results, tag=2):
         
     return tag*np.array(flag)
 
-
 def odd_even_mismatch(results, tag=4):
     """Return flag array with results with suspicious mismatched transit depths
     flagged
@@ -79,17 +81,22 @@ def low_snr(results, lc, cutoff=2, tag=16):
     return tag*np.array(flag)
 
 
+def inf_period_uncertainty(results, tag=256):
+    """Return a flag array where results with infinite period uncertainty 
+    are flagged
+    """
+    flag = [r.period_uncertainty == np.inf for r in results]
+    return tag*np.array(flag)
+
 # NEEDS WORK
 def tls_edge(results, tag=32):
     flag = []
     
     for result in results:
-        maximim, minimum = result.periods[-2], result.period[1]
+        maximum, minimum = result.periods[-2], result.periods[1]
         flag.append(result.period > maximum or result.period < minimum)
     
     return tag*np.array(flag)
-        
-    
 
 
 ### Vetting Helper functions ###
@@ -259,8 +266,9 @@ def pc_overlap(pcs, bjd, return_cut=True):
         while j < len(pcs):
             intransit2 = transit_mask(bjd, pcs[j].period, 
                                       pcs[j].duration, pcs[j].T0)
-            
-            if np.any(intransit & intransit2):
+
+            # 60% of duration in ~2 minutes to check overlap
+            if np.sum(intransit & intransit2) > pcs[i].duration/0.001: 
                 cut_pcs.append(pcs.pop(j))
             else:
                 j += 1

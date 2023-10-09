@@ -29,10 +29,29 @@ def get_star_info(tic):
 
 
 def get_tess_data(tic, minsector=1, maxsector=65):
-    """Return timeseries arrays based on the tic
+    """Return TESS timeseries arrays based on the tic
     
-    Series Needed:
-    BJD, fnorm, sectors, qual_flags, texp
+    === Arguments ===
+    tic: int
+        TESS identifier number for the target
+    minsector: int
+        Minimum sector to retrieve data from. Default: 1
+    maxsector: int
+        Maximum sector to retrieve data from. Default: 65
+        
+    === Returns ===
+    bjd: numpy array    
+        BJD of each exposure
+    fnorm: numpy array
+        Normalized PDSCAP flux recoded by TESS
+    efnorm: numpy array
+        Error on the flux recorded by TESS
+    sectors: numpy array
+        Sector in which each exposure was taken
+    qual_flags: numpy array
+        Quality flag for each exposure taken
+    texps: numpy array
+        Exposure time for each exposure. Should be 2 minutes
     """
     # Get all the filenames
     filenames = get_tess_filenames(tic, minsector=minsector, 

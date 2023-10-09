@@ -84,6 +84,7 @@ def ps_mcmc_prep(pc, ts, nwalkers):
     Rp_sigma = Rp/20
     Rp_dist = norm(Rp, Rp_sigma)
     
+    
     walker_samplers = [T0_model, P_model, Rp_dist, b_model]
     walker_pos = [sampler.rvs(size=nwalkers) for sampler in walker_samplers]
     walkers = np.array(walker_pos).T
@@ -216,7 +217,7 @@ def plot_model(pc, ts, savefig=None, show=False, title=None):
     
     bin_bjd, bin_fnorm, bin_efnorm =  bin_curve(bjd_folded, fnorm, efnorm,
                                                 even_bins=True, 
-                                                bin_length=pc.duration/10)
+                                                bin_length=pc.duration/8)
     
     plt.scatter(bjd_folded, fnorm, s=1)
     plt.errorbar(bin_bjd, bin_fnorm, bin_efnorm, ls='', 

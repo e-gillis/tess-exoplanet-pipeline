@@ -4,6 +4,7 @@ import pymc3_ext as pmx
 import aesara_theano_fallback.tensor as tt
 from celerite2.theano import terms, GaussianProcess
 from gls import Gls
+from scipy.stats import norm
 
 from scipy.signal import savgol_filter
 
@@ -14,11 +15,11 @@ import wotan as w
 ### Main Detrending Functions ###
 
 def gaussian_detrend(bjd, fnorm, efnorm):
-    residual_rotation, Prot = rotation_check(bjd, fnorm, efnorm)
+    residual_rotation, Prot = rotation_check(bjd, fnorm, efnorm, verb=True)
     fnorm_detrend = fnorm.copy()
     count = 0
 
-    while residual_rotation and count < 3:
+    while residual_rotation and count < 5:
         map_soln = build_model_SHO(bjd, fnorm_detrend, efnorm, Prot)
         fnorm_detrend -= map_soln["pred"]/1000
 
@@ -31,7 +32,8 @@ def gaussian_detrend(bjd, fnorm, efnorm):
     return fnorm_detrend, detrended
 
 
-def median_detrend(fnorm, window_length=400):
+def median_detrend(fnorm, split=True, window_length=360):
+    # Should use 12 hours like Ment
     sav_model = savgol_filter(fnorm, window_length, 1) - 1
     fnorm_detrend = fnorm - sav_model
     
@@ -40,13 +42,15 @@ def median_detrend(fnorm, window_length=400):
 
 def spline_detrend(bjd, fnorm, efnorm, iterative=False):
     if iterative:
-            raise NotImplementedError
-    
+        raise NotImplementedError
+            
+    bjd_range = max(bjd) - min(bjd)
     residual_rotation, Prot = rotation_check(bjd, fnorm, efnorm)
+    
     if residual_rotation:
-        max_splines = int((bjd[-1]-bjd[0])//Prot * 8)
+        max_splines = int(bjd_range/Prot * 8)
     else:
-        max_splines = 20
+        max_splines = int(20 * bjd_range/28) # More for long lightcurves
     
     fnorm_detrend = w.flatten(bjd, fnorm, method='pspline',
                               return_trend=False,
@@ -58,24 +62,28 @@ def spline_detrend(bjd, fnorm, efnorm, iterative=False):
 
 ### Helper Functions ###
 
-def rotation_check(bjd, fnorm, efnorm):
-    # Should I bin the light curve?
-    bjd, fnorm, efnorm = misc.bin_curve(bjd, fnorm, efnorm)
+def rotation_check(bjd, fnorm, efnorm, verb=False):
+    # Bin the lightcurve with 20 bins per day
+    bjd, fnorm, efnorm = misc.bin_curve(bjd, fnorm, efnorm, 
+                                        even_bins=True, bin_length=0.05)
     T = bjd[-1] - bjd[0]
     
-    gls = Gls(((bjd, fnorm, efnorm)), fend=10, fbeg=0.1/(bjd[-1]-bjd[0]))
+    # Minimum period of 1/day, maximum period of 1/full time
+    gls = Gls(((bjd, fnorm, efnorm)), fend=1, fbeg=1/(bjd[-1]-bjd[0]))
     
     Prot = gls.best['P']
     
     theta = gls.best['amp'], gls.best['T0']
     Prot, offset = gls.best['P'], gls.best['offset']
     model = misc.sincurve(bjd, *theta, Prot, offset)
-    model_null = np.ones(len(bjd)) * offset
+    model_null = np.ones(len(bjd)) * np.median(fnorm)
     
     dBIC = misc.DeltaBIC(fnorm, efnorm, model, model_null, k=4)
     
+    if verb:
+        print(f"Delta BIC: {dBIC}, Rotation{[' not', ''][dBIC<=-10]} detected")
+    
     return (dBIC<=-10 and Prot < T/2), Prot
-
 
 
 def build_model_SHO(bjd, fnorm, efnorm, Prot):
@@ -123,6 +131,65 @@ def build_model_SHO(bjd, fnorm, efnorm, Prot):
 
     return map_soln
 
+
+def ks_noise_test(fnorm_detrend):
+    """
+    Use the KS-test to determine whether a detrended lightcurve is consistent
+    with white noise
+    
+    === Arguments ===
+    fnorm_detrend:
+        Detrended TESS lightcurve
+        
+    === Returns ===
+    prob_D:
+        The probability that the light curve is drawn from gaussuian noise
+    """
+    # fnorm_cdf = cdf(fnorm_detrend)
+    mu, sigma = np.mean(fnorm_detrend), np.std(fnorm_detrend)
+    gauss_cdf = lambda x: norm.cdf(x, loc=mu, scale=sigma)
+    
+    fnorm_sort = np.sort(fnorm_detrend)
+    diffs = np.zeros(2*len(fnorm_sort))
+    
+    for i, dat in enumerate(fnorm_sort):
+        diffs[i] = abs(gauss_cdf(dat) - (i+1)/len(fnorm_sort))
+        diffs[i+len(fnorm_sort)] = abs(gauss_cdf(dat-1e-5) - i/len(fnorm_sort))
+
+    # Take max
+    D = max(np.abs(diffs)) 
+    N = len(fnorm_detrend)
+    
+    # KS Test probability
+    prob_D = Q_KS((N**0.5 + 0.12 + 0.11/N**0.5)*D)
+    
+    return prob_D
+
+
+def cdf(dat):
+    """Return a function that gives the cumulative distribution
+    """
+    return lambda x: sum(dat <= x) / len(dat)
+
+
+def Q_KS(z):
+    """Translated from Numerical Recipes. They do two different power series, 
+    but we have enough power to just use the more accurate one
+    """
+    assert(z >= 0)
+
+    if z == 0:
+        return 1
+    
+    print(z)
+    y = np.exp(-1.23370055013616983/z**2)
+    P_KS = 2.25675833419102515*np.sqrt(-np.log(y))*\
+           (y + y**9 + y**25 + y**49)
+    
+    return P_KS
+
+
+#### Not Used ####
 
 def chi_squared(x_data, y_data, y_sigma, y_fit, dof):
 
