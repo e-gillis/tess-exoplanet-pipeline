@@ -101,6 +101,11 @@ class TransitSearch:
         self.results = None
         self.result_tags = None
         
+        # Helpful for reproducing results
+        self.star_params = (mass, radius, u)
+        self.tls_kwargs = {"R_star": self.radius, "M_star": self.mass, "u": self.u,
+                           "period_min": MIN_PERIOD, "period_max": MAX_PERIOD}
+        
         # Space for planet Candidates
         self.planet_candidates = []
         self.planet_candidates_reject = []
@@ -132,16 +137,12 @@ class TransitSearch:
             results_list = ps.find_transits(lc.bjd,lc.fnorm_detrend,lc.efnorm,
                                             (self.radius, self.mass, self.u),
                                             grazing_search=grazing_search,
-                                            period_min=MIN_PERIOD,
-                                            period_max=MAX_PERIOD,
                                             threshold=SDE_CUTOFF,
                                             max_iterations=max_iterations,
                                             show_progress_bar=progress, 
                                             threads=threads,
                                             method=MASK_METHOD,
-                                            R_star=self.radius,
-                                            M_star=self.mass,
-                                            u=self.u)
+                                            **self.tls_kwargs)
             
             self.results.append(results_list)
     
@@ -728,8 +729,7 @@ class PlanetCandidate:
                 print("run_mcmc method must be run first!")
                 return None
         
-        mc.plot_model(self, self.ts, 
-                      savefig=savefig, show=show, title=title)
+        mc.plot_model(self, self.ts,savefig=savefig, show=show, title=title)
     
     def corner_plot(self, savefig=None, show=True, title=None):
         if self.mcmc_chain is None:

@@ -66,7 +66,7 @@ def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4
         # plt.show()
         
         diff = result.power[:-1]-result.power[1:]
-        good_spec = sum(diff==0) / len(result.power) < 0.67
+        good_spec = sum(diff==0) / len(result.power) < 0.9
         
         # Check if planet found
         if result["SDE"] > threshold and good_spec:
@@ -126,7 +126,7 @@ def mask_transits(bjd, fnorm, period, duration, T0, method):
         return bjd, fnorm
 
 
-def fit_transit_model(bjd, fnorm, efnorm, result, star_params, r_update=True):
+def fit_transit_model(bjd, fnorm, efnorm, result, star_params, r_update=False):
     """
     Fit a transit model to a lightcurve informed by a TLS result using scipy's
     curve_fit. Retrun the optimal planet paramaters.
@@ -163,6 +163,9 @@ def fit_transit_model(bjd, fnorm, efnorm, result, star_params, r_update=True):
     # Transit model to fit parameters in
     transit_model = lambda bjd, T0, P, Rp, b:\
                    misc.batman_model(bjd, T0, P, Rp, b, R, M, u)
+    
+    # Only fit to the intransit data
+    intransit = transit_mask(bjd, result.period, result.T0, 2*result.duration)
 
     # Set Bounds
     bounds = np.array(((T0-T0_delta, T0+T0_delta),
@@ -170,9 +173,11 @@ def fit_transit_model(bjd, fnorm, efnorm, result, star_params, r_update=True):
                       (0, 1), 
                       (0, 1))).T
     p0 = (T0, period, (1-result.depth)**0.5, 0.5)
+    
     # Run the curve fit
-    popt, pcov = curve_fit(transit_model, bjd, fnorm, p0=p0, bounds=bounds,
-                           sigma=efnorm)
+    popt, pcov = curve_fit(transit_model, bjd[intransit], fnorm[intransit], 
+                           p0=p0, bounds=bounds,
+                           sigma=efnorm[intransit])
     # Unpack variables and return
     T0, P, Rp, b = popt
 
@@ -211,5 +216,18 @@ def model_mask(bjd, fnorm, efnorm, result, star_params):
     return fnorm - transit_model + 1
     
 
-
+def model_mask_checks(fnorm, transit_model, old_result):
+    """
+    Determine if a model mask has sufficiently removed the SDE signal
+    from a TLS result to prevent double results
     
+    === Arguments ===
+    fnorm: numpy array
+        Normalized detrended lightcurve
+    transit_model: numpy array
+        Trandit model to mask out the transits
+    old_result: 
+        transitleastsquares result from unmasked fnorm
+    """
+    model_masked = fnorm - transit_model + 1
+    raise NotImplementedError 
