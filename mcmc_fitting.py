@@ -13,6 +13,8 @@ purple = "#351c75ff"
 mac_orange = "#fcc049ff"
 mac_red = "#881235ff"
 
+### Want to add offsets to this fit ###
+
 
 
 def transit_log_prob(params, star_params, lc_arrays, param_priors, rand=True):
@@ -26,7 +28,7 @@ def transit_log_prob(params, star_params, lc_arrays, param_priors, rand=True):
     prior_prob = np.sum(np.log(np.array(prior_probs)))
     
     # Parameter Order
-    T0, P, Rp, b = params
+    T0, P, Rp, b, offset = params
     bjd, fnorm, efnorm = lc_arrays
     R, R_err, M, M_err, u = star_params
     
@@ -43,7 +45,8 @@ def transit_log_prob(params, star_params, lc_arrays, param_priors, rand=True):
         R_star = R
         M_star = M
         
-    light_curve = batman_model(bjd_folded, 0, P, Rp, b, R_star, M_star, u)
+    light_curve = batman_model(bjd_folded, 0, P, Rp, b, R_star, M_star, 
+                               u, offset)
     
     # Compute Log Posterior probability
     chi2 = -0.5 * sum((light_curve -  fnorm)**2 / efnorm**2)
@@ -65,7 +68,7 @@ def ps_mcmc_prep(pc, ts, nwalkers):
                 np.concatenate([lc.fnorm_detrend for lc in ts.lightcurves]),\
                 np.concatenate([lc.efnorm for lc in ts.lightcurves])
     bjd_folded = (bjd - T0 + P/2) % P - P/2
-    cut = np.abs(bjd_folded) < 5*pc.duration
+    cut = np.abs(bjd_folded) < 2*pc.duration
     bjd_c, fnorm_c, efnorm_c = bjd[cut], fnorm[cut], efnorm[cut]    
     lc_arrays = (bjd_c, fnorm_c, efnorm_c)
     
@@ -77,7 +80,10 @@ def ps_mcmc_prep(pc, ts, nwalkers):
     Rp_model = loguniform(0.005, 0.5)
     # Uniform prior on impact parameter
     b_model = uniform(0, 0.95)
-    priors = [T0_model, P_model, Rp_model, b_model]
+    # Offset model
+    offset_model = norm(0, np.std(fnorm_c))
+    
+    priors = [T0_model, P_model, Rp_model, b_model, offset_model]
     
     # Sampler for Rp/R*
     Rp = (1-best_result.depth)**0.5 
@@ -85,7 +91,7 @@ def ps_mcmc_prep(pc, ts, nwalkers):
     Rp_dist = norm(Rp, Rp_sigma)
     
     
-    walker_samplers = [T0_model, P_model, Rp_dist, b_model]
+    walker_samplers = [T0_model, P_model, Rp_dist, b_model, offset_model]
     walker_pos = [sampler.rvs(size=nwalkers) for sampler in walker_samplers]
     walkers = np.array(walker_pos).T
     
@@ -98,7 +104,7 @@ def ps_mcmc_prep(pc, ts, nwalkers):
 def plot_chain_dists(chain, priors, savefig=None, square=True, 
                      T0_offset=True, show=False, title=None):
     
-    titles = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter"]
+    titles = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter", "Offset"]
 
     if T0_offset:
         T0_m = int(np.mean(chain[:,0]))
@@ -142,7 +148,7 @@ def plot_chain_dists(chain, priors, savefig=None, square=True,
     
 def plot_chain_corner(chain, savefig=None, show=False, title=None):
     
-    labels = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter"]
+    labels = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter", "Offset"]
     figure = corner.corner(chain, labels=labels)
     
     if title:
@@ -157,8 +163,8 @@ def plot_chain_corner(chain, savefig=None, show=False, title=None):
 
 def plot_chain_dists(chain, priors, title=None, savefig=None, show=True):
     
-    fig, axs = plt.subplots(1, 4, figsize=(13, 4))
-    labels = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter"]
+    fig, axs = plt.subplots(1, len(priors), figsize=(16, 4))
+    labels = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter", "Offset"]
     intervals = confidence_interval(chain, 0.90)
     conf = confidence_interval(chain, 0.68) 
 
@@ -200,7 +206,7 @@ def plot_model(pc, ts, savefig=None, show=False, title=None):
                 np.concatenate([lc.efnorm for lc in ts.lightcurves])
     
     R, M, u = ts.radius, ts.mass, ts.u
-    T0, P, Rp, b = np.median(chain, axis=0)
+    T0, P, Rp, b, offset = np.median(chain, axis=0)
     
     bjd_folded = (bjd - T0 + P/2) % P - P/2
     
@@ -223,7 +229,7 @@ def plot_model(pc, ts, savefig=None, show=False, title=None):
     plt.errorbar(bin_bjd, bin_fnorm, bin_efnorm, ls='', 
                  capsize=3, marker='.', color='red')
     
-    bm_curve = batman_model(bjd_folded, 0, P, Rp, b, R, M, u)
+    bm_curve = batman_model(bjd_folded, 0, P, Rp, b, R, M, u, offset)
     plt.plot(bjd_folded, bm_curve, color='k', lw=4)
     
     plt.xlim(-1.5*pc.duration, 1.5*pc.duration)
@@ -243,7 +249,7 @@ def plot_model(pc, ts, savefig=None, show=False, title=None):
     
 
 def plot_chain_evo(chain, savefig=None, show=False, title=None):
-    titles = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter"]
+    titles = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter", "Offset"]
     
     # Chain must be staight from ensam
     fig, axs = plt.subplots(1, chain.shape[-1], 
@@ -285,7 +291,7 @@ def mcmc_transit_snr(chain, bjd, fnorm_detrend, star_params):
     a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R
     duration = P / np.pi * np.arcsin(1/a)         
     
-    print(bjd, P, duration, T0)
+    # print(bjd, P, duration, T0)
     intransit = transit_mask(bjd, P, duration, T0)
     bjd_diff = bjd[intransit][1:] - bjd[intransit][:-1]
     N = sum(bjd_diff > (P-duration))

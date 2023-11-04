@@ -155,38 +155,61 @@ def fit_transit_model(bjd, fnorm, efnorm, result, star_params, r_update=False):
     """
     # Unpack Parameters
     R, M, u = star_params
+    dur_guess = misc.transit_duration(M, R, result.period, 
+                                      (1-result.depth)**0.5, 1)
     
-    # Use period, T0, duration, 
-    T0, T0_delta = result.T0, result.duration
-    period, p_delta = result.period, abs(result.period_uncertainty)
+    if result.duration / dur_guess < 5:
+        # Use period, T0, duration, 
+        T0, T0_delta = result.T0, result.duration
+        period, p_delta = result.period, abs(result.period_uncertainty)
 
-    # Transit model to fit parameters in
-    transit_model = lambda bjd, T0, P, Rp, b:\
-                   misc.batman_model(bjd, T0, P, Rp, b, R, M, u)
-    
-    # Only fit to the intransit data
-    intransit = transit_mask(bjd, result.period, result.T0, 2*result.duration)
+        # Transit model to fit parameters in
+        transit_model = lambda bjd, T0, P, Rp, b, offset:\
+                       misc.batman_model(bjd, T0, P, Rp, b, R, M, u, offset)
 
-    # Set Bounds
-    bounds = np.array(((T0-T0_delta, T0+T0_delta),
-                      (period-p_delta, period+p_delta),
-                      (0, 1), 
-                      (0, 1))).T
-    p0 = (T0, period, (1-result.depth)**0.5, 0.5)
+        # Only fit to the intransit data
+        intransit = transit_mask(bjd, result.period, result.T0, 2*result.duration)
+
+        # Set Bounds
+        bounds = np.array(((T0-T0_delta, T0+T0_delta),
+                          (period-p_delta, period+p_delta),
+                          (0, 1), 
+                          (0, 1),
+                          (-np.std(fnorm[intransit]), np.std(fnorm[intransit])))).T
+        p0 = (T0, period, (1-result.depth)**0.5, 0.5, 0)
+
+        # Run the curve fit
+        popt, pcov = curve_fit(transit_model, bjd[intransit], fnorm[intransit], 
+                               p0=p0, bounds=bounds,
+                               sigma=efnorm[intransit])
+        # Unpack variables and return
+        T0, P, Rp, b, offset = popt
     
-    # Run the curve fit
-    popt, pcov = curve_fit(transit_model, bjd[intransit], fnorm[intransit], 
-                           p0=p0, bounds=bounds,
-                           sigma=efnorm[intransit])
-    # Unpack variables and return
-    T0, P, Rp, b = popt
+    else:
+        P = result.period
+        # Transit model to fit parameters in
+        transit_model = lambda bjd, T0, Rp, b:\
+                       misc.batman_model(bjd, T0, P, Rp, b, R, M, u)
+        
+        bounds = np.array(((bjd[0], bjd[0]+P),
+                           (0, 1),
+                           (0, 1))).T
+        p0 = (np.mean(bounds[:,0]), (1-result.depth)**0.5, 0.5)
+        # Run the curve fit
+        popt, pcov = curve_fit(transit_model, bjd, fnorm, 
+                               p0=p0, bounds=bounds,
+                               sigma=efnorm)
+        # Unpack variables and return
+        T0, Rp, b = popt
+        offset = 0
+        
 
     if r_update:
         result.period = P
         result.T0 = T0
         result.depth = 1 - Rp**2
     
-    return T0, P, Rp, b
+    return T0, P, Rp, b, offset
 
 
 def model_mask(bjd, fnorm, efnorm, result, star_params):
@@ -209,9 +232,9 @@ def model_mask(bjd, fnorm, efnorm, result, star_params):
     masked_fnorm: numpy array
         Residual flux after the transit has been modeled and subtracted
     """
-    T0, P, Rp, b = fit_transit_model(bjd, fnorm, efnorm, result, star_params)
+    T0, P, Rp, b, o = fit_transit_model(bjd, fnorm, efnorm, result, star_params)
     R, M, u = star_params
-    transit_model = misc.batman_model(bjd, T0, P, Rp, b, R, M, u)
+    transit_model = misc.batman_model(bjd, T0, P, Rp, b, R, M, u, o)
 
     return fnorm - transit_model + 1
     

@@ -31,7 +31,7 @@ def rotation_signal(lc, results, tag=1):
         for result in results:
             ratio = max([result.period/Prot, Prot/result.period])
             mod = min(ratio%1, (1-ratio)%1)
-            flag.append(np.isclose(mod, 0, atol=ratio*0.02))  # 2% Tolerance?
+            flag.append(np.isclose(mod, 0, atol=ratio*0.01))  # 2% Tolerance?
         flag = np.array(flag)
          
         return tag*flag
@@ -49,7 +49,7 @@ def bad_tls_spectrum(results, tag=2):
     
     for result in results:
         diff = result.power[:-1]-result.power[1:]
-        flag.append(sum(diff==0) / len(result.power) > 0.5)
+        flag.append(sum(diff==0) / len(result.power) > 0.66)
         
     return tag*np.array(flag)
 

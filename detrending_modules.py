@@ -14,25 +14,34 @@ import wotan as w
 
 ### Main Detrending Functions ###
 
-def gaussian_detrend(bjd, fnorm, efnorm):
+def gaussian_detrend(bjd, fnorm, efnorm, SHOTerm=False):
     residual_rotation, Prot = rotation_check(bjd, fnorm, efnorm, verb=True)
     fnorm_detrend = fnorm.copy()
-    count = 0
+    
+    if SHOTerm:
+        count = 0
+        while residual_rotation and count < 4:
+            map_soln = build_model_SHO(bjd, fnorm_detrend, efnorm, Prot)
+            fnorm_detrend -= map_soln["pred"]/1000
 
-    while residual_rotation and count < 4:
-        map_soln = build_model_SHO(bjd, fnorm_detrend, efnorm, Prot)
+            residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, 
+                                                     efnorm, verb=True)
+            count += 1
+        detrended = (count!=0) and (not residual_rotation or count >= 4)
+    
+    else:
+        map_soln = build_model_RotationTerm(bjd, fnorm_detrend, efnorm, Prot)
         fnorm_detrend -= map_soln["pred"]/1000
-
-        residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, efnorm)
-        count += 1
         
-    detrended = (count!=0) and (not residual_rotation or count >= 4)
+        residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, 
+                                                     efnorm, verb=True)
+        detrended = not residual_rotation
     
     return fnorm_detrend, detrended
 
 
 def median_detrend(fnorm, split=True, window_length=360):
-    # Should use 12 hours like Ment
+    # Should use 12 hours like Ment? Yes
     sav_model = savgol_filter(fnorm, window_length, 1) - 1
     fnorm_detrend = fnorm - sav_model
     
@@ -77,12 +86,15 @@ def rotation_check(bjd, fnorm, efnorm, bin_length=0.05, verb=False):
     model = misc.sincurve(bbjd, *theta, Prot, offset)
     model_null = np.ones(len(bbjd)) * np.median(bfnorm)
     
+    FAP = gls.FAP(gls.pmax)
     dBIC = misc.DeltaBIC(bfnorm, befnorm, model, model_null, k=4)
+    rotation = dBIC <= -50 and FAP < 0.01
     
     if verb:
-        print(f"Delta BIC: {dBIC}, Rotation{[' not', ''][dBIC<=-50]} detected")
+        print(f"Delta BIC: {dBIC},",
+              f"{['no', f'{Prot} day'][rotation]} Rotation Detected")
     
-    return dBIC<=-50, Prot
+    return rotation, Prot
 
 
 def build_model_SHO(bjd, fnorm, efnorm, Prot):
@@ -200,40 +212,29 @@ def build_model_RotationTerm(bjd, fnorm, efnorm, Prot):
         
         # Quantifying measurement uncertainty
         log_sigma_lc = pm.Normal("log_sigma_lc", 
-                                 mu=np.log(np.median(efnorm)), sd=.1)
+                                 mu=np.log(np.median(efnorm)), sd=0.1)
         # Period Fit
-        log_rho_gp = pm.Normal("log_rho_gp", mu=np.log(Prot), sd=.2)
-        # Damping and variation timescale
-        log_tau_gp = pm.Uniform("log_tau_gp", lower=np.log(10*Prot), upper=20)
+        log_rho_gp = pm.Normal("log_rho_gp", mu=np.log(Prot), sd=0.01)
         
-        # For relative powers of rotation terms
-        log_Q0 = pm.HalfNormal("log_Q0", sigma=2.0)
-        log_dQ = pm.Normal("log_dQ", mu=0.0, sigma=2.0)
-        f = pm.Uniform("f", lower=0.1, upper=1.0)
+        # Quality Parameters for the oscillators
+        Q0 = pm.Normal("Q0", mu=8, sigma=2) 
+        # log_Q0 = pm.Normal("log_Q0", mu=0, sigma=2)
+        log_dQ = pm.Normal("log_dQ", mu=0, sigma=2.0)
+        f = pm.Uniform("f", lower=0.8, upper=1)
 
         
         # Make the kernel
-        kernel = terms.SHOTerm(sigma=tt.exp(log_sigma_gp),
-                                rho=tt.exp(log_rho_gp),
-                                tau=tt.exp(log_tau_gp))
-        kernel += terms.RotationTerm(sigma=tt.exp(log_sigma_gp),
-                                     period=tt.exp(log_rho_gp),
-                                     Q0=tt.exp(log_Q0),
-                                     dQ=tt.exp(log_dQ),
-                                     f=f)
+        kernel = terms.RotationTerm(sigma=tt.exp(log_sigma_gp),
+                                    period=tt.exp(log_rho_gp),
+                                    Q0=Q0,
+                                    dQ=tt.exp(log_dQ),
+                                    f=f)
 
         gp = GaussianProcess(kernel, t=bjd, yerr=tt.exp(log_sigma_lc))
         gp.marginal("gp", observed=fnorm)
         pm.Deterministic("pred", gp.predict(fnorm))
         
         start = model.test_point
-        
-        # map_soln = pmx.optimize(start=start,
-        #                         vars=[log_sigma_lc, log_sigma_gp, 
-        #                               log_rho_gp, log_tau_gp])
-        # map_soln = pmx.optimize(start=map_soln, vars=[log_Q0, log_dQ, f])
-        # map_soln = pmx.optimize(start=map_soln, vars=[mean])
-        # map_soln = pmx.optimize(start=map_soln)
         map_soln = pmx.optimize(start=start)
     
     return map_soln

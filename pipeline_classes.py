@@ -529,6 +529,7 @@ class PlanetCandidate:
         self.period = None
         self.Rp = None
         self.b = None
+        self.offset = None
         self.duration = None
         self.snr = None
         
@@ -545,7 +546,8 @@ class PlanetCandidate:
 
         # Make the model
         pmodel = misc.batman_model(bjd, self.T0, self.period, self.Rp, self.b, 
-                                   self.ts.radius, self.ts.mass, self.ts.u)
+                                   self.ts.radius, self.ts.mass, self.ts.u,
+                                   offset=self.offset)
         # Subtract the model
         fnorm += pmodel - 1
         return fnorm
@@ -589,8 +591,8 @@ class PlanetCandidate:
         self.best_result = best_result
 
         # Get a best-fit model
-        self.T0, self.period, self.Rp, self.b = ps.fit_transit_model(bjd, fnorm, 
-                                                efnorm, best_result, (R, M, u))
+        self.T0, self.period, self.Rp, self.b, self.offset =\
+            ps.fit_transit_model(bjd, fnorm, efnorm, best_result, (R, M, u))
         
         # # Edges can give an uncertainty less than zero for some reason
         # if self.best_result.period_uncertainty < 0:
@@ -640,15 +642,15 @@ class PlanetCandidate:
         self.priors = priors
         
         # Run the MCMC
-        with Pool() as pool:
-            ensam = emcee.EnsembleSampler(nwalkers, 4, mc.transit_log_prob,
-                                          pool=pool,
-                                          args=(star_params,lc_arrays,priors))
+        with Pool(TLS_THREADS) as pool:
+            print(len(priors))
+            ensam = emcee.EnsembleSampler(nwalkers, len(priors), mc.transit_log_prob,
+                                          pool=pool, args=(star_params,lc_arrays,priors))
             ensam.run_mcmc(walkers, nsteps=nsteps, progress=progress)
         
         # Save the chain
         self.full_mcmc_chain = ensam.get_chain()
-        self.mcmc_chain = self.full_mcmc_chain[burn_in:].reshape((-1, 4))
+        self.mcmc_chain = self.full_mcmc_chain[burn_in:].reshape((-1, len(priors)))
         
         # Update Parameters
         # self.T0, self.P, self.Rp, self.b = np.median(self.mcmc_chain, axis=0)

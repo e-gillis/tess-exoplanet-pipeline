@@ -156,7 +156,7 @@ def transit_duration_simple(M, R, P):
 
 ## Modeling Functions ##
 
-def batman_model(bjd, T0, P, Rp, b, R, M, u):
+def batman_model(bjd, T0, P, Rp, b, R, M, u, offset=0):
     # Should make this a function
     G = 2942.2062
     a = (P**2 * M / (4*np.pi**2) * G)**(1/3) / R
@@ -176,7 +176,7 @@ def batman_model(bjd, T0, P, Rp, b, R, M, u):
     # Make Model
     m = batman.TransitModel(bm_params, bjd)
 
-    return m.light_curve(bm_params)    
+    return m.light_curve(bm_params) + offset
 
 
 def generate_transit_model(best_period, R, M, u):
