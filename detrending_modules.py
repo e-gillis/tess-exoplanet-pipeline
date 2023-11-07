@@ -217,7 +217,7 @@ def build_model_RotationTerm(bjd, fnorm, efnorm, Prot):
         log_rho_gp = pm.Normal("log_rho_gp", mu=np.log(Prot), sd=0.01)
         
         # Quality Parameters for the oscillators
-        Q0 = pm.Normal("Q0", mu=8, sigma=2) 
+        Q0 = pm.Normal("Q0", mu=7.5, sigma=2) 
         # log_Q0 = pm.Normal("log_Q0", mu=0, sigma=2)
         log_dQ = pm.Normal("log_dQ", mu=0, sigma=2.0)
         f = pm.Uniform("f", lower=0.8, upper=1)

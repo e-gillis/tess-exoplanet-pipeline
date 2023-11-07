@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import misc_functions as misc
 from scipy.optimize import curve_fit
+from constants import TLS_THREADS
 
 from transitleastsquares import transitleastsquares, transit_mask
 from transitleastsquares import catalog_info
@@ -35,7 +36,7 @@ def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4
     # intransit = np.zeros(len(bjd), dtype=bool)
     
     # Look for the first planet
-    model = transitleastsquares(bjd, fnorm)
+    model = transitleastsquares(bjd, fnorm, efnorm)
     result = model.power(**tls_kwargs, use_threads=threads)
     
     # Check if a planet candidate is found
@@ -58,7 +59,7 @@ def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4
                                        method=method)
         
         # Look for planets again with transits masked
-        model = transitleastsquares(bjd, fnorm)
+        model = transitleastsquares(bjd, fnorm, efnorm)
         result = model.power(**tls_kwargs, use_threads=threads,
                              transit_template=['default', 'grazing'][grazing])
         
@@ -126,7 +127,8 @@ def mask_transits(bjd, fnorm, period, duration, T0, method):
         return bjd, fnorm
 
 
-def fit_transit_model(bjd, fnorm, efnorm, result, star_params, r_update=False):
+def fit_transit_model(bjd, fnorm, efnorm, result, star_params, 
+                      r_update=False, durcheck=True):
     """
     Fit a transit model to a lightcurve informed by a TLS result using scipy's
     curve_fit. Retrun the optimal planet paramaters.
@@ -158,51 +160,43 @@ def fit_transit_model(bjd, fnorm, efnorm, result, star_params, r_update=False):
     dur_guess = misc.transit_duration(M, R, result.period, 
                                       (1-result.depth)**0.5, 1)
     
-    if result.duration / dur_guess < 5:
-        # Use period, T0, duration, 
-        T0, T0_delta = result.T0, result.duration
-        period, p_delta = result.period, abs(result.period_uncertainty)
-
-        # Transit model to fit parameters in
-        transit_model = lambda bjd, T0, P, Rp, b, offset:\
-                       misc.batman_model(bjd, T0, P, Rp, b, R, M, u, offset)
-
-        # Only fit to the intransit data
-        intransit = transit_mask(bjd, result.period, result.T0, 2*result.duration)
-
-        # Set Bounds
-        bounds = np.array(((T0-T0_delta, T0+T0_delta),
-                          (period-p_delta, period+p_delta),
-                          (0, 1), 
-                          (0, 1),
-                          (-np.std(fnorm[intransit]), np.std(fnorm[intransit])))).T
-        p0 = (T0, period, (1-result.depth)**0.5, 0.5, 0)
-
-        # Run the curve fit
-        popt, pcov = curve_fit(transit_model, bjd[intransit], fnorm[intransit], 
-                               p0=p0, bounds=bounds,
-                               sigma=efnorm[intransit])
-        # Unpack variables and return
-        T0, P, Rp, b, offset = popt
+    if result.duration / dur_guess < 5 and durcheck:
+        print("Result Duration 5 times greater than predicted, correcting")
+        # Redo result with shorter window around period
+        tls_kwargs = {"R_star": R, "M_star": M, "u": u,
+                     "period_min": result.period*0.95, 
+                     "period_max": result.period*1.05}
+        model = transitleastsquares(bjd, fnorm, efnorm, verbose=False)
+        res = model.power(**tls_kwargs, use_threads=TLS_THREADS, 
+                          show_progress_bar=False)
+        result.period, result.duration, result.T0, result.depth = \
+        res.period, res.duration, res.T0, res.depth
     
-    else:
-        P = result.period
-        # Transit model to fit parameters in
-        transit_model = lambda bjd, T0, Rp, b:\
-                       misc.batman_model(bjd, T0, P, Rp, b, R, M, u)
-        
-        bounds = np.array(((bjd[0], bjd[0]+P),
-                           (0, 1),
-                           (0, 1))).T
-        p0 = (np.mean(bounds[:,0]), (1-result.depth)**0.5, 0.5)
-        # Run the curve fit
-        popt, pcov = curve_fit(transit_model, bjd, fnorm, 
-                               p0=p0, bounds=bounds,
-                               sigma=efnorm)
-        # Unpack variables and return
-        T0, Rp, b = popt
-        offset = 0
-        
+    # Use period, T0, duration, 
+    T0, T0_delta = result.T0, result.duration
+    period, p_delta = result.period, abs(result.period_uncertainty)
+
+    # Transit model to fit parameters in
+    transit_model = lambda bjd, T0, P, Rp, b, offset:\
+                   misc.batman_model(bjd, T0, P, Rp, b, R, M, u, offset)
+
+    # Only fit to the intransit data
+    intransit = transit_mask(bjd, result.period, result.T0, 2*result.duration)
+
+    # Set Bounds
+    bounds = np.array(((T0-T0_delta, T0+T0_delta),
+                      (period-p_delta, period+p_delta),
+                      (0, 1), 
+                      (0, 1),
+                      (-np.std(fnorm[intransit]), np.std(fnorm[intransit])))).T
+    p0 = (T0, period, (1-result.depth)**0.5, 0.5, 0)
+
+    # Run the curve fit
+    popt, pcov = curve_fit(transit_model, bjd[intransit], fnorm[intransit], 
+                           p0=p0, bounds=bounds,
+                           sigma=efnorm[intransit])
+    # Unpack variables and return
+    T0, P, Rp, b, offset = popt
 
     if r_update:
         result.period = P

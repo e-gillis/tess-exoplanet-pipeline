@@ -31,7 +31,7 @@ def rotation_signal(lc, results, tag=1):
         for result in results:
             ratio = max([result.period/Prot, Prot/result.period])
             mod = min(ratio%1, (1-ratio)%1)
-            flag.append(np.isclose(mod, 0, atol=ratio*0.01))  # 2% Tolerance?
+            flag.append(np.isclose(mod, 0, atol=ratio*0.003))  # 0.3% Tolerance?
         flag = np.array(flag)
          
         return tag*flag

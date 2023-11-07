@@ -592,32 +592,9 @@ class PlanetCandidate:
 
         # Get a best-fit model
         self.T0, self.period, self.Rp, self.b, self.offset =\
-            ps.fit_transit_model(bjd, fnorm, efnorm, best_result, (R, M, u))
-        
-        # # Edges can give an uncertainty less than zero for some reason
-        # if self.best_result.period_uncertainty < 0:
-        #     self.best_result.period_uncertainty = 2*P_delta
-        
-        # # fit other params with curve_fit
-        # best_period = best_result.period
-        # transit_model = misc.generate_transit_model(best_period, 
-        #                                             self.ts.radius, 
-        #                                             self.ts.mass, self.ts.u)
-        # T0, T0_delta = best_result.T0, best_result.duration
-        # bounds = np.array(((T0-T0_delta, T0+T0_delta), 
-        #                   (0, 1), 
-        #                   (0, 1))).T
-        
-        # popt, pcov = curve_fit(transit_model, bjd, fnorm,
-        #                        p0=(best_result.T0, (1-best_result.depth)**0.5, 0.5),
-        #                        bounds=bounds,       
-        #                        sigma=efnorm)
-        
-        # Save Params
-        # self.period = best_period
-        # self.T0, self.Rp, self.b = popt
-        
-        # Get SNR Params for the transit
+            ps.fit_transit_model(bjd, fnorm, efnorm, best_result, 
+                                 (R, M, u), durcheck=False)
+
         depth = self.Rp**2
         
         # Compute the duration
