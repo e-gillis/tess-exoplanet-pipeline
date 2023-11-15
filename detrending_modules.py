@@ -34,7 +34,7 @@ def gaussian_detrend(bjd, fnorm, efnorm, SHOTerm=False):
         fnorm_detrend -= map_soln["pred"]/1000
         
         residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, 
-                                                     efnorm, verb=True)
+                                                 efnorm, verb=True)
         detrended = not residual_rotation
     
     return fnorm_detrend, detrended

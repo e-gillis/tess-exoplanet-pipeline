@@ -114,7 +114,7 @@ def half_sectors_or_more(results_list, lc_lengths, tag=512):
             # Total number of sectors where this result could have been found
             sector_num = sum(lc_lengths > P*2)
             
-            if count / sector_num < 0.5:
+            if count < sector_num//2:
                 full_tags[i][j] += tag
                     
     return full_tags

@@ -524,9 +524,55 @@ class TIC_LightCurve(LightCurve):
         
 
 class PlanetCandidate:
+    """
+    A Planet Candidate object to model candidate planets and collect planet
+    characteristics. Must be linked to a Transit Search object to provide 
+    lightcurves and host star parameters.
     
+    === Attributes ===
+    ts: TransitSearch
+        Transit search object to provide lightcurves and star parameters.
+    correlated_results: List[TLS results]
+        List of transitleastsquares results to provide the base for the transit
+        search
+    best_result: TLS results
+        transitleastsquares result that best characterizes this planet candidate
+    T0: float
+        BJD of the first transit midtime in the lightcurves in self.ts
+    P: float
+        Period of the planet candidate
+    Rp: float
+        Ratio of the planet's radius to the star's radius. Stellar radius and 
+        uncertainty are is accessible through self.ts.radius and 
+        self.ts.radius_err
+    b: float
+        Impart parameter of the transit
+    offset: float
+        Offset of lightcurve ephemeris during transit from 1
+    duration: float
+        Duration of the transit in days
+    snr: float
+        Signal to noise ratio of the planet candidate
+    mcmc_full_chain: numpy array
+        Full unflattened MCMC chain with the trajectory of each walker over
+        the 5 mcmc parameters
+    mcmc_chain: numpy array
+        Flatterned mcmc chain with burn in removed. Appropriate for 
+        characterizing the posterior distribution of planet parameters
+    priors: List[scipy.stats._continuous_distns]
+        Prior distributions for each of the 5 parameters
+    """
     def __init__(self, ts, correlated_results):
+        """
+        Initialization method for the PlanetCandidate
         
+        === Arguments ===
+       ts: TransitSearch
+            Transit search object to provide lightcurves and star parameters.
+        correlated_results: List[TLS results]
+            List of transitleastsquares results to provide the base for the transit
+            search
+        """
         # Get Data in this class
         self.ts = ts
         self.results = correlated_results
@@ -548,6 +594,19 @@ class PlanetCandidate:
 
 
     def mask_planet(self, bjd, fnorm):
+        """Mask this planet candidate out of a given timeseries, return the
+        masked timeseries.
+        
+        === Arguments ===
+        bjd: numpy array
+            bjd time for each datapoint
+        fnorm: numpy array
+            Normalized flux at each datapoing
+            
+        === Returns ===
+        masked_fnorm: 
+            Normalized flux with planet candidate ephemeris removed
+        """
         if self.period is None:
             print("Planet Parameters have not been modeled!")
             return fnorm
@@ -557,11 +616,21 @@ class PlanetCandidate:
                                    self.ts.radius, self.ts.mass, self.ts.u,
                                    offset=self.offset)
         # Subtract the model
-        fnorm += pmodel - 1
+        masked_fnorm = fnorm - pmodel + 1
         return fnorm
         
     
     def fit_planet_params(self, mask_others=False):
+        """
+        Find a best fit model for planet parameters and assign parameters to
+        the appropriate attributes. Best fit model is strongly informed by the
+        best result of the planet search
+        
+        === Arguments ===
+        mask_others: Boolean, default False
+            If True, mask other planet candidates in the transit search (except
+            this one!) out of the timeseries before proceeding with fitting
+        """
         # Get lightcurves from the transit search object
         bjd, fnorm, efnorm = np.concatenate([lc.bjd for lc in 
                                              self.ts.lightcurves]),\
@@ -620,6 +689,10 @@ class PlanetCandidate:
     
     
     def run_mcmc(self, nsteps=4000, nwalkers=48, burn_in=2000, progress=True):
+        """
+        Run a Monte Carlo Markov Chain to characterize the posterior 
+        distribution of planet parameters. 
+        """
         # Prepare priors and walker positions
         priors, lc_arrays, walkers = mc.ps_mcmc_prep(self, self.ts, nwalkers)
         star_params = (self.ts.radius, self.ts.radius_err, 
