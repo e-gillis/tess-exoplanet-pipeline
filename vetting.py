@@ -14,7 +14,8 @@ TAG_DICT = {1:  'Rotation Signal',
             32: 'TLS Edge',
             64: 'LC Edge',
             128:'Deep single transit',
-            256:'Inf period uncertainty'}
+            256:'Inf period uncertainty',
+            512:'Half sectors or more'}
 
 
 def rotation_signal(lc, results, tag=1):
@@ -87,6 +88,37 @@ def inf_period_uncertainty(results, tag=256):
     """
     flag = [r.period_uncertainty == np.inf for r in results]
     return tag*np.array(flag)
+
+
+def half_sectors_or_more(results_list, lc_lengths, tag=512):
+    """Given a full set of results, flag all signals that only appear in less
+    than half of the lightcurves from a target
+    """
+    full_tags = [np.zeros(i) for i in [len(r) for r in results_list]]
+    
+    for i, results in enumerate(results_list):
+        for j, r in enumerate(results):
+            # r is the base result
+            count = 1
+            P = r.period
+            
+            r_indeces = [m for m in range(len(results_list)) if m != i]
+            for k in r_indeces:
+                for l in range(len(results_list[k])):
+                    P_ra = max(P/results_list[k][l].period,
+                               results_list[k][l].period/P)
+                    if math.isclose(P_ra,round(P_ra),rel_tol=0.01) and P_ra < 3:
+                        count += 1
+                        break
+            
+            # Total number of sectors where this result could have been found
+            sector_num = sum(lc_lengths > P*2)
+            
+            if count / sector_num < 0.5:
+                full_tags[i][j] += tag
+                    
+    return full_tags
+
 
 # NEEDS WORK
 def tls_edge(results, tag=32):
@@ -180,13 +212,6 @@ def correlation_check(res1, res2, ptol=0.02, durtol=0.3, depthtol=0.5,
     duration_matches = math.isclose(res1.duration, res2.duration,
                                     rel_tol=durtol)
 
-    # depth_ratio = max(depth/flattened_results[i].depth, 
-    #                   flattened_results[i].depth/depth)
-    # duration_ratio = max(duration/flattened_results[i].duration, 
-    #                      flattened_results[i].duration/duration)
-    # P_ratio = P_ratio / 
-
-
     if check_T0:
         T0_diff = abs(res1.T0 - res2.T0)
         P_ratio = T0_diff / res1.period
@@ -267,8 +292,11 @@ def pc_overlap(pcs, bjd, return_cut=True):
             intransit2 = transit_mask(bjd, pcs[j].period, 
                                       pcs[j].duration, pcs[j].T0)
 
-            # 60% of duration in ~2 minutes to check overlap
-            if np.sum(intransit & intransit2) > pcs[i].duration/0.001: 
+            # 100% of duration in ~2 minutes to check overlap
+            # Get longest intransit part
+            max_overlap = longest_overlap(intransit, intransit2)
+            
+            if max_overlap*2/(24*60) > 0.9*pcs[i].duration: 
                 cut_pcs.append(pcs.pop(j))
             else:
                 j += 1
@@ -279,3 +307,21 @@ def pc_overlap(pcs, bjd, return_cut=True):
         return pcs, cut_pcs
     
     return pcs
+
+
+def longest_overlap(intransit1, intransit2):
+    """Return the length of the longest overlap in the two boolean arrays
+    """
+    overlap = intransit1 & intransit2
+    
+    overlap_length = 0
+    max_overlap = 0
+    
+    for i in range(len(overlap)):
+        if overlap[i]:
+            overlap_length += 1
+        else:
+            max_overlap = max(max_overlap, overlap_length)
+            overlap_length = 0
+    
+    return max_overlap

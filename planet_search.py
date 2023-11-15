@@ -31,10 +31,6 @@ def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4
         transitleastsquares.readthedocs.io/en/latest/Python interface.html#return-values
         for more information
     """
-    
-    # All points are in the transit
-    # intransit = np.zeros(len(bjd), dtype=bool)
-    
     # Look for the first planet
     model = transitleastsquares(bjd, fnorm, efnorm)
     result = model.power(**tls_kwargs, use_threads=threads)
@@ -63,9 +59,6 @@ def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4
         result = model.power(**tls_kwargs, use_threads=threads,
                              transit_template=['default', 'grazing'][grazing])
         
-        # plt.scatter(bjd, fnorm, s=0.1)
-        # plt.show()
-        
         diff = result.power[:-1]-result.power[1:]
         good_spec = sum(diff==0) / len(result.power) < 0.9
         
@@ -81,9 +74,6 @@ def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4
 
         # Increment
         i += 1
-        
-    # plt.scatter(bjd, fnorm, s=0.1)
-    # plt.show()
         
     return result_list
 
@@ -107,7 +97,6 @@ def mask_transits(bjd, fnorm, period, duration, T0, method):
         Method to mask transits with: Noise overwrites the intransit timeseries
         with gaussian noise matching the mean and rms of the full timeseries;
         Remove excises the intransit data from the timeseries
-
     """
     # Make sure method is there
     assert method in ['remove', 'noise']

@@ -179,6 +179,14 @@ class TransitSearch:
             vetting_array += vet.inf_period_uncertainty(results)
             
             self.result_tags.append(vetting_array)
+            
+        # Check for results across different sectors
+        lc_lengths = np.array([lc.bjd[-1]-lc.bjd[0] 
+                               for lc in self.lightcurves])
+        sector_vet = vet.half_sectors_or_more(self.results, lc_lengths)
+        
+        for i in range(len(self.result_tags)):
+            self.result_tags[i] += sector_vet[i]
     
      
     def cc_results(self, vet_results=True):
