@@ -691,7 +691,18 @@ class PlanetCandidate:
     def run_mcmc(self, nsteps=4000, nwalkers=48, burn_in=2000, progress=True):
         """
         Run a Monte Carlo Markov Chain to characterize the posterior 
-        distribution of planet parameters. 
+        distribution of planet parameters. self.fit_planet_params must be run
+        before this method. 
+        
+        === Arguments ===
+        nsteps: int
+            Number of steps for the chain to take
+        nwalkers: int
+            Number of walkers to explore the parameter space
+        burn_in: int
+            Length of the burn in of the chain to be chopped off
+        progress: Boolean, default True
+            If True, show progress bar of MCMC
         """
         # Prepare priors and walker positions
         priors, lc_arrays, walkers = mc.ps_mcmc_prep(self, self.ts, nwalkers)
