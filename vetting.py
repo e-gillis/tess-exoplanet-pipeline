@@ -101,7 +101,7 @@ def half_sectors_or_more(results_list, lc_lengths, tag=512):
     for i, results in enumerate(results_list):
         for j, r in enumerate(results):
             # r is the base result
-            if results[i][j].SDE > 11:
+            if results_list[i][j].SDE > 11:
                 continue
             
             count = 1
