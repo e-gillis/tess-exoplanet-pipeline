@@ -18,7 +18,7 @@ def gaussian_detrend(bjd, fnorm, efnorm, SHOTerm=False):
     residual_rotation, Prot = rotation_check(bjd, fnorm, efnorm, verb=True)
     fnorm_detrend = fnorm.copy()
     
-    if SHOTerm:
+    if SHOTerm and residual_rotation:
         count = 0
         while residual_rotation and count < 4:
             map_soln = build_model_SHO(bjd, fnorm_detrend, efnorm, Prot)
@@ -29,13 +29,16 @@ def gaussian_detrend(bjd, fnorm, efnorm, SHOTerm=False):
             count += 1
         detrended = (count!=0) and (not residual_rotation or count >= 4)
     
-    else:
+    elif residual_rotation:
         map_soln = build_model_RotationTerm(bjd, fnorm_detrend, efnorm, Prot)
         fnorm_detrend -= map_soln["pred"]/1000
         
         residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, 
                                                  efnorm, verb=True)
         detrended = not residual_rotation
+    
+    else:
+        detrended = False
     
     return fnorm_detrend, detrended
 
