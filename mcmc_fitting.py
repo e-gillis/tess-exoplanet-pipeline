@@ -58,7 +58,7 @@ def transit_log_prob(params, star_params, lc_arrays, param_priors, rand=True):
 
 
 ### MCMC Prep Function ##
-def ps_mcmc_prep(pc, ts, nwalkers):
+def ps_mcmc_prep(pc, ts, nwalkers, mask_others):
     best_result = pc.best_result
     
     P, P_sigma = best_result.period, best_result.period_uncertainty
@@ -67,6 +67,13 @@ def ps_mcmc_prep(pc, ts, nwalkers):
     bjd, fnorm, efnorm = np.concatenate([lc.bjd for lc in ts.lightcurves]),\
                 np.concatenate([lc.fnorm_detrend for lc in ts.lightcurves]),\
                 np.concatenate([lc.efnorm for lc in ts.lightcurves])
+    
+    if mask_others:
+        for p in pc.ts.planet_candidates:
+            # Comparing results
+            if [r.period for r in p.results]!=[r.period for r in pc.results]:
+                fnorm = p.mask_planet(bjd, fnorm)
+
     bjd_folded = (bjd - T0 + P/2) % P - P/2
     cut = np.abs(bjd_folded) < 2*pc.duration
     bjd_c, fnorm_c, efnorm_c = bjd[cut], fnorm[cut], efnorm[cut]    

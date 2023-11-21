@@ -243,13 +243,17 @@ class TransitSearch:
         sorted_pcs = [planet_candidates[i] for i in snr_sorts]
         
         # Check for overlap
-        pcs, cut_pcs = vet.pc_overlap(sorted_pcs, full_bjd)
-        self.planet_candidates.extend(pcs)
-        self.planet_candidates_reject.extend(cut_pcs+planet_candidates_reject)
+        # pcs, cut_pcs = vet.pc_overlap(sorted_pcs, full_bjd)
+        # self.planet_candidates.extend(pcs)
+        # self.planet_candidates_reject.extend(cut_pcs+planet_candidates_reject)
+        
+        self.planet_candidates.extend(sorted_pcs)
+        self.planet_candidates.extend(planet_candidates_reject)
         
         # Run MCMC
         for pc in self.planet_candidates:
-            pc.run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN, progress=progress)
+            pc.run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN, progress=progress, 
+                        mask_others=mask_planets)
     
     
     def plot_transits(self):
@@ -688,7 +692,8 @@ class PlanetCandidate:
         self.snr = depth / noise * N**0.5
     
     
-    def run_mcmc(self, nsteps=4000, nwalkers=48, burn_in=2000, progress=True):
+    def run_mcmc(self, nsteps=4000, nwalkers=48, burn_in=2000, progress=True,
+                 mask_others=True):
         """
         Run a Monte Carlo Markov Chain to characterize the posterior 
         distribution of planet parameters. self.fit_planet_params must be run
@@ -705,7 +710,9 @@ class PlanetCandidate:
             If True, show progress bar of MCMC
         """
         # Prepare priors and walker positions
-        priors, lc_arrays, walkers = mc.ps_mcmc_prep(self, self.ts, nwalkers)
+        priors, lc_arrays, walkers = mc.ps_mcmc_prep(self, self.ts, nwalkers,
+                                                     mask_others=True)
+        
         star_params = (self.ts.radius, self.ts.radius_err, 
                        self.ts.mass, self.ts.mass_err, self.ts.u)
         self.priors = priors

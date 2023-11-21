@@ -283,11 +283,15 @@ def decompose_tag(tag):
 
 def pc_overlap(pcs, bjd, return_cut=True):
     """Given a list of planet candidates, return a list where planet candidates
-    with overlapping transits are removed. Planet candidates at the start of
-    the list are kept over later ones
+    with overlapping transits are removed. Higher SNR Planet candidates are kept 
+    over lower ones. 
     """
     i = 0
     cut_pcs = []
+    
+    # Sort from highest to lowest based on SNR
+    sort_indeces = np.argsort([pc.snr for pc in pcs])
+    pcs = [pcs[i] for i in sort_indeces[::-1]]
     
     while i < len(pcs)-1:
         j = i+1
