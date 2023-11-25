@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
+from inspect import ismethod
 
 from scipy.optimize import curve_fit
 import emcee
@@ -232,29 +233,30 @@ class TransitSearch:
             pc = PlanetCandidate(self, c_results)
             pc.fit_planet_params(mask_others=mask_planets)
             
-            if pc.snr > SNR_MCMC and not np.isnan(pc.snr):
-                planet_candidates.append(pc)
-            elif pc.snr <= SNR_MCMC and not np.isnan(pc.snr):
-                planet_candidates_reject.append(pc)
+            # Planet candidates need to be added here to mask them!
+            if not np.isnan(pc.snr) and pc.snr > SNR_MCMC:
+                self.planet_candidates.append(pc)
+            elif not np.isnan(pc.snr) and pc.snr <= SNR_MCMC:
+                self.planet_candidates_reject.append(pc)
         
         # Find PCs with overlapping transits
         full_bjd = np.concatenate([lc.bjd for lc in self.lightcurves])
-        snr_sorts = np.argsort([pc.snr for pc in planet_candidates])[::-1]
-        sorted_pcs = [planet_candidates[i] for i in snr_sorts]
+        snr_sorts = np.argsort([pc.snr for pc in self.planet_candidates])[::-1]
+        sorted_pcs = [self.planet_candidates[i] for i in snr_sorts]
         
         # Check for overlap
         # pcs, cut_pcs = vet.pc_overlap(sorted_pcs, full_bjd)
-        # self.planet_candidates.extend(pcs)
-        # self.planet_candidates_reject.extend(cut_pcs+planet_candidates_reject)
-        
-        self.planet_candidates.extend(sorted_pcs)
-        self.planet_candidates.extend(planet_candidates_reject)
+        # self.planet_candidates = pcs
+        # self.planet_candidates_reject.extend(cut_pcs)
         
         # Run MCMC
         for pc in self.planet_candidates:
-            pc.run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN, progress=progress, 
-                        mask_others=mask_planets)
-    
+            try:
+                pc.run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN, progress=progress,
+                            mask_others=mask_planets)
+            except ValueError:
+                continue        
+                
     
     def plot_transits(self):
         raise NotImplementedError
@@ -621,7 +623,7 @@ class PlanetCandidate:
                                    offset=self.offset)
         # Subtract the model
         masked_fnorm = fnorm - pmodel + 1
-        return fnorm
+        return masked_fnorm
         
     
     def fit_planet_params(self, mask_others=False):
@@ -666,9 +668,12 @@ class PlanetCandidate:
                                        M_star=self.ts.mass, 
                                        u=self.ts.u, 
                                        show_progress_bar=False)
+        # If nothing was found by the TLS
         if np.isnan(best_result.period):
             print("Fitting Failed, no transits found by TLS")
+            self.snr = np.nan
             return None
+        
         self.best_result = best_result
 
         # Get a best-fit model
@@ -711,7 +716,7 @@ class PlanetCandidate:
         """
         # Prepare priors and walker positions
         priors, lc_arrays, walkers = mc.ps_mcmc_prep(self, self.ts, nwalkers,
-                                                     mask_others=True)
+                                                     mask_others=mask_others)
         
         star_params = (self.ts.radius, self.ts.radius_err, 
                        self.ts.mass, self.ts.mass_err, self.ts.u)
@@ -825,4 +830,77 @@ def load_ts(path):
         loaded_ts = pickle.load(f)
     return loaded_ts
 
+def load_ts_update(path):
+    updated_ts = TransitSearchUpdate(load_ts(path))
+    return updated_ts
     
+
+# Class to update with new methods
+class TransitSearchUpdate(TransitSearch):
+    """Class to update a saved TransitSearch object with new methods while
+    retaining all attributes. Will also update the planet candidates and 
+    lightcurves
+    """
+    def __init__(self, ts):
+        self.lightcurves = []
+        self.planet_candidates = []
+        self.planet_candidates_reject = []
+        
+        # Go through all the attributes and update them
+        for attr_name in dir(ts):
+            attr = getattr(ts, attr_name)
+            
+            # Check if it's a method or builtin
+            if ismethod(attr) or attr_name[:2]=="__":
+                continue
+           
+            # Planet Candidates and lightcurves
+            elif attr_name in ['planet_candidates','planet_candidates_reject']:
+                for pc in attr:
+                    getattr(self, attr_name)\
+                    .append(PlanetCandidateUpdate(pc, self))
+                    
+            elif attr_name == 'lightcurves':
+                for lc in attr:
+                    self.lightcurves.append(LightCurveUpdate(lc))
+                    
+            else:
+                setattr(self, attr_name, attr)
+                
+                
+class LightCurveUpdate(LightCurve):
+    """Class to update a saved Lightcurve object with new methods while
+    retaining all attributes.
+    """
+    def __init__(self, lc):
+        # Get all the attributes
+        for attr_name in dir(lc):
+            attr = getattr(lc, attr_name)
+            
+            # Check if it's a method or builtin
+            if ismethod(attr) or attr_name[:2]=="__":
+                continue
+                
+            else:
+                setattr(self, attr_name, attr)
+
+                
+class PlanetCandidateUpdate(PlanetCandidate):
+    """Class to update a saved PlanetCandidate object with new methods while
+    retaining all attributes.
+    """
+    def __init__(self, pc, ts):
+        # Get all the attributes
+        for attr_name in dir(pc):
+            attr = getattr(pc, attr_name)
+            
+            # Check if it's a method or builtin
+            if ismethod(attr) or attr_name[:2]=="__":
+                continue
+            
+            elif attr_name=='ts':
+                setattr(self, 'ts', ts)
+                
+            else:
+                setattr(self, attr_name, attr)
+                

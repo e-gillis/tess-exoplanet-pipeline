@@ -80,9 +80,9 @@ def ps_mcmc_prep(pc, ts, nwalkers, mask_others):
     lc_arrays = (bjd_c, fnorm_c, efnorm_c)
     
     # Gaussian Priors on T0 and period
-    T0_model = norm(T0, T0_sigma)
+    T0_model = norm(T0, abs(T0_sigma))
     # Period prior informed by period grid? It already has uncertainty
-    P_model = norm(P, P_sigma)
+    P_model = norm(P, abs(P_sigma))
     # Uniform in log space? Linear log cutoff depth sets max Rp/R*
     Rp_model = loguniform(0.005, 0.5)
     # Uniform prior on impact parameter
@@ -94,7 +94,8 @@ def ps_mcmc_prep(pc, ts, nwalkers, mask_others):
     
     # Sampler for Rp/R*
     Rp = (1-best_result.depth)**0.5 
-    Rp_sigma = Rp/20
+    Rp_sigma = abs(Rp/20)
+    print(Rp, Rp_sigma)
     Rp_dist = norm(Rp, Rp_sigma)
     
     
