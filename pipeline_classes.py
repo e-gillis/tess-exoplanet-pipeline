@@ -866,6 +866,8 @@ class TransitSearchUpdate(TransitSearch):
                     
             else:
                 setattr(self, attr_name, attr)
+        
+        self.version = VERSION
                 
                 
 class LightCurveUpdate(LightCurve):
