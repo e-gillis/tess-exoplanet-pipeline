@@ -7,7 +7,7 @@ import misc_functions as misc
 
 # Dictionary for tags
 TAG_DICT = {1:  'Rotation Signal', 
-            2:  'Bad Spectrum', 
+            2:  'Duplicate Period', 
             4:  'Odd Even Mismatch', 
             8:  'Duration too long', 
             16: 'Low SNR',
@@ -43,7 +43,7 @@ def rotation_signal(lc, results, tag=1):
         return tag*flag
         
     
-def bad_tls_spectrum(results, tag=2):
+def bad_tls_spectrum(results, tag=0):
     """Return flag array with results with suspicious TLS results flagged
     """
     flag = []
@@ -53,6 +53,19 @@ def bad_tls_spectrum(results, tag=2):
         flag.append(sum(diff==0) / len(result.power) > 0.66)
         
     return tag*np.array(flag)
+
+
+def duplicate_period(results, tag=2):
+    flags = np.zeros(len(results))
+    
+    for i, r1 in enumerate(results):
+        for j, r2 in enumerate(results[i+1:]):
+            if math.isclose(r1.period, r2.period, rel_tol=0.01):
+                flags[j] = tag
+                
+    return flags
+            
+
 
 def odd_even_mismatch(results, tag=4):
     """Return flag array with results with suspicious mismatched transit depths
@@ -158,8 +171,8 @@ def cut_results(results_list, result_tags):
     return cut_results_list
 
 
-def correlate_results(results_list, ptol=0.02, durtol=0.3, depthtol=0.5, 
-                      check_T0=True):
+def old_correlate_results(results_list, ptol=0.02, durtol=0.3, depthtol=0.5, 
+                          check_T0=True):
     """Correlate results whose periods are sufficiently close
     """
     # Empty list
@@ -227,6 +240,64 @@ def correlation_check(res1, res2, ptol=0.02, durtol=0.3, depthtol=0.5,
 
     # Make sure everything matches
     return period_matches and depth_matches and duration_matches and T0_matches
+
+
+def correlate_results(results_list, ptol=0.01, durtol=0.3, 
+                      depthtol=0.4, check_T0=True):
+    correlated_results = []
+    
+    # First go through and collect results based on common period
+    while len(results_list) > 0:
+        c_list = []
+        i, j = 0, 0
+        
+        # Index through lists
+        while i < len(results_list):
+            if j == len(results_list[i]):
+                i, j = i+1, 0
+                continue
+                
+            # Check if clist is empty, if not match period of first result
+            if len(c_list) == 0 or\
+            math.isclose(results_list[i][j].period, c_list[0].period, rel_tol=ptol):
+                c_list.append(results_list[i].pop(j))
+            else:
+                j += 1
+        
+        correlated_results.append(c_list)
+        
+        # Trim results:
+        i = 0
+        while i < len(results_list):
+            if len(results_list[i]) == 0:
+                results_list.pop(i)
+            else:
+                i += 1
+    
+    # Then collect sets of results with common depths and durations p harmonics
+    i = 0
+    while i < len(correlated_results)-1:
+        p, dep, dur = get_p_dep_dur(correlated_results[i])
+        j = i+1
+        while j < len(correlated_results):
+            p2, dep2, dur2 = get_p_dep_dur(correlated_results[j])
+            p_ratio = max([p/p2, p2/p])
+            
+            if math.isclose(p_ratio, round(p_ratio), rel_tol=ptol*3) and\
+               math.isclose(dep, dep2, rel_tol=depthtol) and\
+               math.isclose(dur, dur2, rel_tol=durtol): 
+                correlated_results[i].extend(correlated_results.pop(j))
+            else:
+                j += 1
+        i += 1
+        
+    return correlated_results
+
+
+def get_p_dep_dur(results_list):
+    return np.mean([r.period for r in results_list]),\
+           np.mean([1-r.depth for r in results_list]),\
+           np.mean([r.duration for r in results_list])
 
 
 def get_P_delta(result):

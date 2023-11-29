@@ -8,7 +8,8 @@ import emcee
 from multiprocessing import Pool
 
 # Set TLS minimum grid for fitting
-from transitleastsquares import tls_constants, catalog_info, transitleastsquares, transit_mask
+from transitleastsquares import tls_constants, catalog_info
+from transitleastsquares import transitleastsquares, transit_mask
 tls_constants.MINIMUM_PERIOD_GRID_SIZE = 5
 
 import get_tess_data as gtd
@@ -20,7 +21,7 @@ import misc_functions as misc
 
 from constants import *
 
-VERSION = "0.3"
+VERSION = "0.4"
 
 class TransitSearch:
     """
@@ -166,7 +167,7 @@ class TransitSearch:
             vetting_array += vet.rotation_signal(lc, results)
             
             # Check that TLS spectrums are good?
-            vetting_array += vet.bad_tls_spectrum(results)
+            vetting_array += vet.duplicate_period(results)
             
             # Odd Even Mismatch
             vetting_array += vet.odd_even_mismatch(results)
@@ -568,6 +569,7 @@ class PlanetCandidate:
     priors: List[scipy.stats._continuous_distns]
         Prior distributions for each of the 5 parameters
     """
+    
     def __init__(self, ts, correlated_results):
         """
         Initialization method for the PlanetCandidate
@@ -739,8 +741,36 @@ class PlanetCandidate:
         # self.duration = misc.transit_duration(M, R, self.period, 
         #                                       self.Rp, self.b)      
 
+    
+    def deltaBIC_model(self, dfrac=1):
+        """Return the deltaBIC of the transit model being favored over a 
+        constant with median equal to the median of the signal
+        """
+        # Assemble the timeseries
+        bjd, fnorm, efnorm =\
+        np.concatenate([lc.bjd for lc in self.ts.lightcurves]),\
+        np.concatenate([lc.fnorm_detrend for lc in self.ts.lightcurves]),\
+        np.concatenate([lc.efnorm for lc in self.ts.lightcurves])
+        
+        # Variables for plotting
+        P, T0 = self.period, self.T0
+        R, M, u = self.ts.radius, self.ts.mass, self.ts.u
+        
+        # Fold and cut BJD
+        bjd_folded = (bjd + P/2 - T0) % P - P/2
+        cut = np.abs(bjd_folded) < dfrac*self.duration
+        
+        # Transit model and null model
+        model = misc.batman_model(bjd[cut], T0, P, self.Rp, self.b,
+                                  R, M, u, self.offset)
+        model_null = np.ones(sum(cut))*np.median(fnorm[cut])
+                
+        return misc.DeltaBIC(fnorm[cut], efnorm[cut], model, model_null, k=5)
+    
         
     def plot_results(self, savefig=None, show=True, title=None):
+        """Plot the TLS results that motivate this planet candidate
+        """
         fig, axs = plt.subplots(ncols=1, nrows=len(self.results), 
                                 figsize=(6, 3*len(self.results)),
                                 squeeze=False)
