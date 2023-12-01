@@ -655,7 +655,7 @@ class PlanetCandidate:
                     fnorm = pc.mask_planet(bjd, fnorm)
         
         # Get period from correlated results
-        SNRs = np.array([result.snr for result in self.results])
+        SNRs = np.array([result.SDE for result in self.results])
         
         # Take max right now, maybe do SNR later
         best_result = self.results[np.argmax(SNRs)] 
@@ -742,7 +742,7 @@ class PlanetCandidate:
         #                                       self.Rp, self.b)      
 
     
-    def deltaBIC_model(self, dfrac=1):
+    def deltaBIC_model(self, dfrac=1, use_offset=True):
         """Return the deltaBIC of the transit model being favored over a 
         constant with median equal to the median of the signal
         """
@@ -763,8 +763,11 @@ class PlanetCandidate:
         # Transit model and null model
         model = misc.batman_model(bjd[cut], T0, P, self.Rp, self.b,
                                   R, M, u, self.offset)
-        model_null = np.ones(sum(cut))*np.median(fnorm[cut])
-                
+        if use_offset:
+            model_null = np.ones(sum(cut)) + self.offset
+        else:
+            model_null = np.ones(sum(cut))*np.median(fnorm[cut])
+            
         return misc.DeltaBIC(fnorm[cut], efnorm[cut], model, model_null, k=5)
     
         

@@ -282,10 +282,12 @@ def correlate_results(results_list, ptol=0.01, durtol=0.3,
         while j < len(correlated_results):
             p2, dep2, dur2 = get_p_dep_dur(correlated_results[j])
             p_ratio = max([p/p2, p2/p])
+            lflag = len(correlated_results[i]) + len(correlated_results[j]) <=\
+                    len(results_list)
             
             if math.isclose(p_ratio, round(p_ratio), rel_tol=ptol*3) and\
                math.isclose(dep, dep2, rel_tol=depthtol) and\
-               math.isclose(dur, dur2, rel_tol=durtol): 
+               math.isclose(dur, dur2, rel_tol=durtol) and lflag: 
                 correlated_results[i].extend(correlated_results.pop(j))
             else:
                 j += 1
