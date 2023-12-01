@@ -34,7 +34,6 @@ def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4
     # Look for the first planet
     model = transitleastsquares(bjd, fnorm, efnorm)
     result = model.power(**tls_kwargs, use_threads=threads)
-    misc.plot_result(result)
     
     # Check if a planet candidate is found
     if result["SDE"] < threshold:
@@ -59,7 +58,6 @@ def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4
         model = transitleastsquares(bjd, fnorm, efnorm)
         result = model.power(**tls_kwargs, use_threads=threads,
                              transit_template=['default', 'grazing'][grazing])
-        misc.plot_result(result)
         
         diff = result.power[:-1]-result.power[1:]
         good_spec = sum(diff==0) / len(result.power) < 0.9
