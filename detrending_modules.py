@@ -284,7 +284,7 @@ def cdf(dat):
 
 
 def Q_KS(z):
-    """Translated from Numerical Recipes. They do two different power series, 
+    """Translated from Numerical Recipes. They do two different power series,
     but we have enough power to just use the more accurate one
     """
     assert(z >= 0)

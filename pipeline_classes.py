@@ -8,9 +8,9 @@ import emcee
 from multiprocessing import Pool
 
 # Set TLS minimum grid for fitting
-from transitleastsquares import tls_constants, catalog_info
+from transitleastsquares import tls_constants, catalog_info, period_grid
 from transitleastsquares import transitleastsquares, transit_mask
-tls_constants.MINIMUM_PERIOD_GRID_SIZE = 5
+tls_constants.MINIMUM_PERIOD_GRID_SIZE = 2
 
 import get_tess_data as gtd
 import detrending_modules as dt
@@ -662,14 +662,24 @@ class PlanetCandidate:
         
         P, P_delta = best_result.period, best_result.period_uncertainty
         
+        # Require at least 100 sample periods in the trial range
+        oversampling_factor = 5
+        time_span = bjd[-1]-bjd[0]
+        while len(period_grid(self.ts.radius, self.ts.mass,time_span,
+                              P-P_delta,P+P_delta,oversampling_factor)) < 100:
+            oversampling_factor *= 2
+        
+        print(oversampling_factor, time_span, P-P_delta,P+P_delta)
+        
         # Fit period with limited TLS
-        model_full = transitleastsquares(bjd, fnorm)
+        model_full = transitleastsquares(bjd, fnorm, efnorm)
         best_result = model_full.power(period_min=P-P_delta, 
                                        period_max=P+P_delta,
                                        R_star=self.ts.radius, 
                                        M_star=self.ts.mass, 
                                        u=self.ts.u, 
-                                       show_progress_bar=False)
+                                       show_progress_bar=False,
+                                       oversampling_factor=oversampling_factor)
         # If nothing was found by the TLS
         if np.isnan(best_result.period):
             print("Fitting Failed, no transits found by TLS")
