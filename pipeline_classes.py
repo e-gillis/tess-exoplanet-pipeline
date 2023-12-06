@@ -666,10 +666,10 @@ class PlanetCandidate:
         oversampling_factor = 5
         time_span = bjd[-1]-bjd[0]
         while len(period_grid(self.ts.radius, self.ts.mass,time_span,
-                              P-P_delta,P+P_delta,oversampling_factor)) < 100:
+                              P-P_delta,P+P_delta,oversampling_factor)) < 150:
             oversampling_factor *= 2
         
-        print(oversampling_factor, time_span, P-P_delta,P+P_delta)
+        # print(oversampling_factor, time_span, P-P_delta,P+P_delta)
         
         # Fit period with limited TLS
         model_full = transitleastsquares(bjd, fnorm, efnorm)
