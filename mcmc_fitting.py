@@ -205,7 +205,7 @@ def plot_chain_dists(chain, priors, title=None, savefig=None, show=True):
         plt.show()
         
 
-def plot_model(pc, ts, savefig=None, show=False, title=None):
+def plot_model(pc, ts, savefig=None, show=False, title=None, depthnorm=True):
     
     chain = pc.mcmc_chain
     plt.figure(figsize=(12,4))
@@ -241,6 +241,8 @@ def plot_model(pc, ts, savefig=None, show=False, title=None):
     plt.plot(bjd_folded, bm_curve, color='k', lw=4)
     
     plt.xlim(-1.5*pc.duration, 1.5*pc.duration)
+    if depthnorm:
+        plt.ylim(1+offset-2*Rp**2, 1+offset+Rp**2)
     plt.ylabel("Normalized Flux")
     plt.xlabel("Days Since Transit Middle")
     

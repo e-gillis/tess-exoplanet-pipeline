@@ -62,6 +62,12 @@ class TransitSearch:
         List of credible planet candidates
     planet_candidates_reject: List[PlanetCandidate]
         List of planet candidates which have been rejected
+    planet_candidates_plausible: List[PlanetCandidates]
+        List of plausible but poor fitting planet candidates for manual review
+    
+    lcs, pcs, pcs_r, pcs_p:
+        Aliases for lightcurves, planet_candidates, planet_candidates_reject
+        and planet_candidates_plausible
     """
     
     def __init__(self, tic):
@@ -75,8 +81,8 @@ class TransitSearch:
         self.tic = tic
         full_lc = TIC_LightCurve(tic)
         lc_series = full_lc.get_splits((full_lc.bjd, full_lc.fnorm, 
-                                        full_lc.efnorm, full_lc.sectors, 
-                                        full_lc.qual_flags, full_lc.texp))
+                                    full_lc.efnorm, full_lc.sectors, 
+                                    full_lc.qual_flags, full_lc.texp))
         self.lightcurves = []
         
         for i in range(len(lc_series[0])):
@@ -105,12 +111,20 @@ class TransitSearch:
         
         # Helpful for reproducing results
         self.star_params = (mass, radius, u)
-        self.tls_kwargs = {"R_star": self.radius, "M_star": self.mass, "u": self.u,
-                           "period_min": MIN_PERIOD, "period_max": MAX_PERIOD}
+        self.tls_kwargs = {"R_star": self.radius, "M_star": self.mass, 
+                           "u": self.u, "period_min": MIN_PERIOD, 
+                           "period_max": MAX_PERIOD}
         
         # Space for planet Candidates
         self.planet_candidates = []
         self.planet_candidates_reject = []
+        self.planet_candidates_plausible = []
+        
+        # Set Aliases
+        self.lcs, self.pcs, self.pcs_r, self.pcs_p =\
+        self.lightcurves, self.planet_candidates,\
+        self.planet_candidates_reject, self.planet_candidates_plausible
+        
         
     
     def transit_search(self, threshold=6, max_iterations=4, threads=TLS_THREADS,
@@ -225,9 +239,13 @@ class TransitSearch:
             If true, show progress bar while running the mcmc fitting for each
             planet candidate over the SNR threshold.
         """
+        # Reset planet candidate search
+        self.clear_pcs()
+        
+        # Correlate Results
         correlated_results = self.cc_results(vet_results=True)
-        planet_candidates = []
-        planet_candidates_reject = []
+        # planet_candidates = []
+        # planet_candidates_reject = []
         
         # Collect Planet Candidates
         for c_results in correlated_results:
@@ -239,28 +257,93 @@ class TransitSearch:
                 self.planet_candidates.append(pc)
             elif not np.isnan(pc.snr) and pc.snr <= SNR_MCMC:
                 self.planet_candidates_reject.append(pc)
+                pc.flags.append("Low SNR")
+            else:
+                self.planet_candidates_reject.append(pc)
+                pc.flags.append("NaN SNR")
         
         # Find PCs with overlapping transits
         full_bjd = np.concatenate([lc.bjd for lc in self.lightcurves])
         snr_sorts = np.argsort([pc.snr for pc in self.planet_candidates])[::-1]
         sorted_pcs = [self.planet_candidates[i] for i in snr_sorts]
-        
+                
         # Check for overlap
         # pcs, cut_pcs = vet.pc_overlap(sorted_pcs, full_bjd)
         # self.planet_candidates = pcs
         # self.planet_candidates_reject.extend(cut_pcs)
         
         # Run MCMC
-        for pc in self.planet_candidates:
+        i = 0
+        while i < len(self.pcs):
             try:
-                pc.run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN, progress=progress,
-                            mask_others=mask_planets)
+                self.pcs[i].run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN, 
+                            progress=progress, mask_others=mask_planets)
+                if self.pcs[i].deltaBIC_model(use_mcmc_params=True) > -10:
+                    self.pcs[i].flags.append("Null Model Favoured")
+                    self.pcs_p.append(self.pcs.pop(i))
+                else:
+                    i += 1
+                
             except ValueError:
-                continue        
+                self.pcs[i].flags.append("MCMC Failed, ValueError")
+                self.pcs_p.append(self.pcs.pop(i))        
                 
     
     def plot_transits(self):
         raise NotImplementedError
+        
+    
+    def plot_model(self, batman_params, savefig=None, show=True, title=None):
+        """Plot a transit model given parameters
+        """
+        T0, P, Rp, b, offset = batman_params
+        R, M, u = self.radius, self.mass, self.u
+        
+        plt.figure(figsize=(12,4))
+        bjd, fnorm, efnorm = np.concatenate([lc.bjd for lc in self.lightcurves]),\
+                np.concatenate([lc.fnorm_detrend for lc in self.lightcurves]),\
+                np.concatenate([lc.efnorm for lc in self.lightcurves])
+        
+        bjd_folded = (bjd - T0 + P/2) % P - P/2
+        duration = misc.transit_duration(M, R, P, Rp, b)
+        sort = np.argsort(bjd_folded)
+        bjd_folded, fnorm, efnorm = bjd_folded[sort], fnorm[sort], efnorm[sort]
+         
+        bin_bjd, bin_fnorm, bin_efnorm =  misc.bin_curve(bjd_folded, fnorm, efnorm,
+                                                even_bins=True, 
+                                                bin_length=duration/8)
+        
+        plt.scatter(bjd_folded, fnorm, s=1)
+        plt.errorbar(bin_bjd, bin_fnorm, bin_efnorm, ls='', 
+                     capsize=3, marker='.', color='red')
+
+        bm_curve = misc.batman_model(bjd_folded, 0, P, Rp, b, R, M, u, offset)
+        plt.plot(bjd_folded, bm_curve, color='k', lw=4)
+
+        plt.xlim(-1.5*duration, 1.5*duration)
+        plt.ylabel("Normalized Flux")
+        plt.xlabel("Days Since Transit Middle")
+
+        if title:
+            plt.title(title)
+
+        if savefig:
+            plt.savefig(savefig, bbox_inches='tight')
+
+        if show:
+            plt.show()
+            
+    
+    def clear_pcs(self):
+        """Clear planet candidates and aliases to rerun panet fitting
+        """
+        self.planet_candidates = []
+        self.planet_candidates_plausible = []
+        self.planet_candidates_reject = []
+        
+        self.pcs, self.pcs_p, self.pcs_r = self.planet_candidates,\
+                                           self.planet_candidates_plausible,\
+                                           self.planet_candidates_reject
         
         
     def save(self, filename):
@@ -306,6 +389,10 @@ class LightCurve:
     """
     
     def __init__(self, bjd, fnorm, efnorm, sectors, qual_flags, texp):
+        
+        dat_arrays = [fnorm, efnorm, sectors, qual_flags, texp]
+        assert np.all([len(a) == len(bjd) for a in dat_arrays]),\
+               "Lightcurve data arrays must all be the same length"
         
         self.bjd = bjd
         self.fnorm = fnorm
@@ -526,7 +613,7 @@ class TIC_LightCurve(LightCurve):
         bjd, fnorm, efnorm, sectors, qual_flags, texp = lc_params
         
         LightCurve.__init__(self, bjd, fnorm, efnorm, sectors, 
-                            qual_flags, texp)    
+                            qual_flags, texp) 
         
         
 
@@ -568,6 +655,8 @@ class PlanetCandidate:
         characterizing the posterior distribution of planet parameters
     priors: List[scipy.stats._continuous_distns]
         Prior distributions for each of the 5 parameters
+    flags: List[string]
+        List of flags set externally to validate planet candidates
     """
     
     def __init__(self, ts, correlated_results):
@@ -594,6 +683,7 @@ class PlanetCandidate:
         self.offset = None
         self.duration = None
         self.snr = None
+        self.flags = []
         
         # MCMC Things
         self.full_mcmc_chain = None
@@ -657,20 +747,18 @@ class PlanetCandidate:
         # Get period from correlated results
         SNRs = np.array([result.SDE for result in self.results])
         
-        # Take max right now, maybe do SNR later
+        # do SNR, but could refine this
         best_result = self.results[np.argmax(SNRs)] 
         
         P, P_delta = best_result.period, best_result.period_uncertainty
         
-        # Require at least 100 sample periods in the trial range
+        # Require at least 150 sample periods in the trial range
         oversampling_factor = 5
         time_span = bjd[-1]-bjd[0]
         while len(period_grid(self.ts.radius, self.ts.mass,time_span,
                               P-P_delta,P+P_delta,oversampling_factor)) < 150:
             oversampling_factor *= 2
-        
-        # print(oversampling_factor, time_span, P-P_delta,P+P_delta)
-        
+                
         # Fit period with limited TLS
         model_full = transitleastsquares(bjd, fnorm, efnorm)
         best_result = model_full.power(period_min=P-P_delta, 
@@ -736,7 +824,6 @@ class PlanetCandidate:
         
         # Run the MCMC
         with Pool(TLS_THREADS) as pool:
-            print(len(priors))
             ensam = emcee.EnsembleSampler(nwalkers, len(priors), mc.transit_log_prob,
                                           pool=pool, args=(star_params,lc_arrays,priors))
             ensam.run_mcmc(walkers, nsteps=nsteps, progress=progress)
@@ -752,7 +839,8 @@ class PlanetCandidate:
         #                                       self.Rp, self.b)      
 
     
-    def deltaBIC_model(self, dfrac=1, use_offset=True):
+    def deltaBIC_model(self, dfrac=1, use_offset=True, use_mcmc_params=False, 
+                       mask_others=True):
         """Return the deltaBIC of the transit model being favored over a 
         constant with median equal to the median of the signal
         """
@@ -762,23 +850,71 @@ class PlanetCandidate:
         np.concatenate([lc.fnorm_detrend for lc in self.ts.lightcurves]),\
         np.concatenate([lc.efnorm for lc in self.ts.lightcurves])
         
-        # Variables for plotting
-        P, T0 = self.period, self.T0
+        # Mask Existing planet candidates who don't match this one!
+        if mask_others:
+            for pc in self.ts.planet_candidates:
+                # Comparing results
+                if [r.period for r in pc.results]!=\
+                   [r.period for r in self.results]:
+                    fnorm = pc.mask_planet(bjd, fnorm)
+                
+        # Variables for model
+        P, T0, Rp, b, offset = self.period,self.T0,self.Rp,self.b,self.offset
         R, M, u = self.ts.radius, self.ts.mass, self.ts.u
         
+        if use_mcmc_params:
+            T0, P, Rp, b, offset = np.median(self.mcmc_chain, axis=0)
+
         # Fold and cut BJD
         bjd_folded = (bjd + P/2 - T0) % P - P/2
         cut = np.abs(bjd_folded) < dfrac*self.duration
         
         # Transit model and null model
-        model = misc.batman_model(bjd[cut], T0, P, self.Rp, self.b,
-                                  R, M, u, self.offset)
+        model = misc.batman_model(bjd[cut], T0, P, Rp, b,
+                                  R, M, u, offset)
         if use_offset:
-            model_null = np.ones(sum(cut)) + self.offset
+            model_null = np.ones(sum(cut)) + offset
         else:
             model_null = np.ones(sum(cut))*np.median(fnorm[cut])
             
         return misc.DeltaBIC(fnorm[cut], efnorm[cut], model, model_null, k=5)
+    
+    
+    def red_chi2_model(self, dfrac=1, use_mcmc_params=True, mask_others=True):
+        """Compute the reduced Chi-squared of the transit model
+        """
+                # Assemble the timeseries
+        bjd, fnorm, efnorm =\
+        np.concatenate([lc.bjd for lc in self.ts.lightcurves]),\
+        np.concatenate([lc.fnorm_detrend for lc in self.ts.lightcurves]),\
+        np.concatenate([lc.efnorm for lc in self.ts.lightcurves])
+        
+        # Mask Existing planet candidates who don't match this one!
+        if mask_others:
+            for pc in self.ts.planet_candidates:
+                # Comparing results
+                if [r.period for r in pc.results]!=\
+                   [r.period for r in self.results]:
+                    fnorm = pc.mask_planet(bjd, fnorm)
+                
+        # Variables for model
+        P, T0, Rp, b, offset = self.period,self.T0,self.Rp,self.b,self.offset
+        R, M, u = self.ts.radius, self.ts.mass, self.ts.u
+        
+        if use_mcmc_params:
+            T0, P, Rp, b, offset = np.median(self.mcmc_chain, axis=0)
+
+        # Fold and cut BJD
+        bjd_folded = (bjd + P/2 - T0) % P - P/2
+        cut = np.abs(bjd_folded) < dfrac*self.duration
+        
+        # Transit model and null model
+        model = misc.batman_model(bjd[cut], T0, P, Rp, b,
+                                  R, M, u, offset)
+        
+        red_chi2 = sum(((fnorm[cut]-model) / efnorm[cut])**2) / (sum(cut)-5)
+        
+        return red_chi2
     
         
     def plot_results(self, savefig=None, show=True, title=None):
@@ -850,12 +986,13 @@ class PlanetCandidate:
         mc.plot_chain_dists(self.mcmc_chain, self.priors, 
                             title=title, savefig=savefig, show=show)
         
-    def model_plot(self, savefig=None, show=True, title=None):
+    def model_plot(self, savefig=None, show=True, title=None, depthnorm=False):
         if self.mcmc_chain is None:
                 print("run_mcmc method must be run first!")
                 return None
         
-        mc.plot_model(self, self.ts,savefig=savefig, show=show, title=title)
+        mc.plot_model(self, self.ts, savefig=savefig, show=show, title=title,
+                     depthnorm=depthnorm)
     
     def corner_plot(self, savefig=None, show=True, title=None):
         if self.mcmc_chain is None:
@@ -864,6 +1001,15 @@ class PlanetCandidate:
         
         mc.plot_chain_corner(self.mcmc_chain, 
                              savefig=savefig, show=show, title=title)
+        
+    def make_all_plots(self, savedir):
+        """Save all relevant plots in a directory
+        """
+        ptag = round(self.period, 2)
+        self.chain_evos_plot(f'{savedir}/{ptag:0.2f}_chain_evo_{self.ts.tic}.pdf')
+        self.chain_dists_plot(f'{savedir}/{ptag:0.2f}_dists_{self.ts.tic}.pdf')
+        self.model_plot(f'{savedir}/{ptag:0.2f}_model_{self.ts.tic}.pdf')
+        self.corner_plot(f'{savedir}/{ptag:0.2f}_corner_{self.ts.tic}.pdf')
     
     
 ### Loading back objects
