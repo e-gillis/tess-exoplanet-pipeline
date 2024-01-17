@@ -94,6 +94,10 @@ class TransitSearch:
         Teff, logg, radius, radius_err,\
         mass, mass_err, RA, Dec = gtd.get_star_info(tic)
         
+        assert not (np.isnan(radius) and np.isnan(mass)),\
+       "Radius and Mass cannot both be NaN, catalog query failed"
+        
+        
         u = catalog_info(TIC_ID=tic)[0]
         
         self.Teff = Teff
@@ -105,6 +109,17 @@ class TransitSearch:
         self.RA = RA
         self.Dec = Dec
         self.u = u
+        
+        # Check For NaNs
+        if np.isnan(self.mass_err):
+            self.mass_err = 0
+        if np.isnan(self.radius_err):
+            self.radius_err = 0
+        if np.isnan(self.radius):
+            self.radius, self.radius_err =misc.m_from_r(self.mass,self.mass_err)
+        if np.isnan(self.mass):
+            self.mass, self.mass_err =misc.r_from_m(self.radius,self.radius_err)
+        
         
         self.results = None
         self.result_tags = None
@@ -247,8 +262,14 @@ class TransitSearch:
         # planet_candidates = []
         # planet_candidates_reject = []
         
+        if sum([len(c) for c in correlated_results]) == 0:
+            return None
+        
         # Collect Planet Candidates
         for c_results in correlated_results:
+            if len(c_results) == 0:
+                continue
+            
             pc = PlanetCandidate(self, c_results)
             pc.fit_planet_params(mask_others=mask_planets)
             
@@ -393,7 +414,7 @@ class LightCurve:
         dat_arrays = [fnorm, efnorm, sectors, qual_flags, texp]
         assert np.all([len(a) == len(bjd) for a in dat_arrays]),\
                "Lightcurve data arrays must all be the same length"
-        
+
         self.bjd = bjd
         self.fnorm = fnorm
         self.efnorm = efnorm
