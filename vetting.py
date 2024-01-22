@@ -311,7 +311,7 @@ def get_P_delta(result):
 def get_result_snr(result, lc):
     """Return the SNR of a transit result from the lightcurve it was derived
     from
-    """    
+    """
     fnorm_binned = misc.bin_curve(lc.bjd, lc.fnorm_detrend, 
                                   lc.efnorm, even_bins=True, 
                                   bin_length=result.duration)[1]
@@ -319,7 +319,8 @@ def get_result_snr(result, lc):
     lc_noise = np.std(fnorm_binned)
     depth = 1 - result["depth"]
 
-    N = misc.get_Ntransits(result.period, result.T0, result.duration, lc.bjd)
+    N = misc.get_Ntransits(result.period, result.T0, result.duration, lc.bjd,
+                           countdiff=True)
     
     # is transit count true
     snr = depth / lc_noise * N**0.5

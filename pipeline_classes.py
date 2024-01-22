@@ -302,6 +302,9 @@ class TransitSearch:
                 if self.pcs[i].deltaBIC_model(use_mcmc_params=True) > -10:
                     self.pcs[i].flags.append("Null Model Favoured")
                     self.pcs_p.append(self.pcs.pop(i))
+                elif self.pcs[i].red_chi2_model(use_mcmc_params=True) > 1.5:
+                    self.pcs[i].flags.append("Poor fit by chi2 test")
+                    self.pcs_p.append(self.pcs.pop(i))
                 else:
                     i += 1
                 

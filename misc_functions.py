@@ -130,17 +130,17 @@ def plot_result(result, savefig=None, show=True, fig=None, ax=None):
     
 
 def get_Ntransits(P, T0, duration, bjd, countdiff=True):
-    intransit = ~transit_mask(bjd, P, duration, T0)
+    intransit = transit_mask(bjd, P, duration, T0)
     
     if countdiff:
         bjd_diff = bjd[intransit][1:] - bjd[intransit][:-1]
         N = sum(bjd_diff > (P-duration)) + 1
 
     else:
-        N = sum(bjd[intransit]) * (2/(60*24)) / duration
+        N = sum(intransit) * (2/(60*24)) / duration
 
     return N
-        
+
 
 def transit_duration(M, R, P, Rp, b):
     G = 2942.2062
