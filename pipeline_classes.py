@@ -427,7 +427,7 @@ class LightCurve:
         self.fnorm_detrend = None       
         
     
-    def get_splits(self, series, split_bjd=False):
+    def get_splits(self, series, split_bjd=False, consecutive_sectors=True):
         # Return each dataset in series split up by sectors
         bjd_diff = self.bjd[1:] - self.bjd[:-1]
         sector_diff = np.abs(self.sectors[1:] - self.sectors[:-1])
@@ -435,7 +435,8 @@ class LightCurve:
         # Find sector boundary points
         indeces = np.arange(len(sector_diff))
 
-        sector_jumps = indeces[sector_diff > 1] # consecutive sectors are okay
+        sec_dif = int(consecutive_sectors)
+        sector_jumps = indeces[sector_diff > sec_dif] # consecutive sectors are okay
         # Do we split based on BJD?
         if split_bjd:
             bjd_jumps = indeces[bjd_diff > 10]
@@ -501,7 +502,37 @@ class LightCurve:
 
         # Normalize detrended curve
         self.fnorm_detrend += 1 - np.median(self.fnorm_detrend)
-            
+        
+        
+    def mask_flares(self, n, nsigma, method='noise'):
+        assert method in ["noise", "remove"],\
+               "method argument must be 'noise' or 'remove'"
+        
+        # Split based on sector for more uniform noise properties
+        fnorms = self.get_splits([self.fnorm_detrend], 
+                                 consecutive_sectors=False)[0]
+        if method == 'noise':
+            for i in range(len(fnorms)):
+                fnorm = fnorms[i]
+                f_mask = dt.flare_mask(fnorm, n, nsigma)
+                fnorm[f_mask] = np.random.normal(loc=np.mean(fnorm[~f_mask]),
+                                                 scale=np.std(fnorm[~f_mask]))
+                fnorms[i] = fnorm
+            self.fnorm_detrend = np.concatenate(fnorms)
+            return None
+        
+        flare_masks = []
+        for fnorm in fnorms:
+            flare_masks.append(dt.flare_mask(fnorm, n, nsigma))
+        f_mask = np.concatenate(flare_masks)
+        
+        self.bjd = self.bjd[~f_mask]
+        self.fnorm = self.fnorm[~f_mask]
+        self.efnorm = self.efnorm[~f_mask]
+        self.qual_flags = self.qual_flags[~f_mask]
+        self.texp = self.texp[~f_mask]
+        self.sectors = self.sectors[~f_mask]
+                    
             
     # Lightcurve is already split!
     def gaussian_detrend_lc(self, cont=False):

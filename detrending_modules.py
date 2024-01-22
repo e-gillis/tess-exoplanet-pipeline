@@ -300,6 +300,25 @@ def Q_KS(z):
     return P_KS
 
 
+### Flare Finding Function ###
+def flare_mask(fnorm, n, nsigma):
+    """Find Flares in fnorm and return a flare mask with sequences of n
+    consecutive points or more nsigma above the median.
+    """
+    # All points which are outliers
+    outlier_mask = fnorm > (nsigma*np.std(fnorm) + np.mean(fnorm))
+    outlier_conv = np.convolve(outlier_mask, np.ones(n), mode='valid')
+    
+    consecutive = outlier_conv == n
+    flare_mask = np.zeros(len(fnorm), dtype=bool)
+    
+    for i in range(n):
+        flare_mask[i:i+len(consecutive)] = flare_mask[i:i+len(consecutive)]\
+                                           | consecutive
+        
+    return flare_mask
+
+
 #### Not Used ####
 
 def chi_squared(x_data, y_data, y_sigma, y_fit, dof):
