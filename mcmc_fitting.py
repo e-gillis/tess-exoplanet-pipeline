@@ -241,8 +241,9 @@ def plot_model(pc, ts, savefig=None, show=False, title=None, depthnorm=True):
     plt.plot(bjd_folded, bm_curve, color='k', lw=4)
     
     plt.xlim(-1.5*pc.duration, 1.5*pc.duration)
-    if depthnorm:
-        plt.ylim(1+offset-2*Rp**2, 1+offset+Rp**2)
+    if depthnorm is not None:
+        plt.ylim(1+offset-(1+depthnorm)*Rp**2, 
+                 1+offset+depthnorm*Rp**2)
     plt.ylabel("Normalized Flux")
     plt.xlabel("Days Since Transit Middle")
     

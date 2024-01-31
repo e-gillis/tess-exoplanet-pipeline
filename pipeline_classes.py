@@ -1087,6 +1087,7 @@ class TransitSearchUpdate(TransitSearch):
     """
     def __init__(self, ts):
         # Space for planet Candidates
+        self.lightcurves = []
         self.planet_candidates = []
         self.planet_candidates_reject = []
         self.planet_candidates_plausible = []
