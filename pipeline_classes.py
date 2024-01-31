@@ -1086,9 +1086,15 @@ class TransitSearchUpdate(TransitSearch):
     lightcurves
     """
     def __init__(self, ts):
-        self.lightcurves = []
+        # Space for planet Candidates
         self.planet_candidates = []
         self.planet_candidates_reject = []
+        self.planet_candidates_plausible = []
+        
+        # Set Aliases
+        self.lcs, self.pcs, self.pcs_r, self.pcs_p =\
+        self.lightcurves, self.planet_candidates,\
+        self.planet_candidates_reject, self.planet_candidates_plausible
         
         # Go through all the attributes and update them
         for attr_name in dir(ts):
