@@ -891,13 +891,13 @@ class PlanetCandidate:
         # self.T0, self.P, self.Rp, self.b = np.median(self.mcmc_chain, axis=0)
         # R, M = self.ts.radius, self.ts.mass
         # self.duration = misc.transit_duration(M, R, self.period, 
-        #                                       self.Rp, self.b)      
+        #                                       self.Rp, self.b)    
 
-    
-    def deltaBIC_model(self, dfrac=1, use_offset=True, use_mcmc_params=False, 
-                       mask_others=True):
-        """Return the deltaBIC of the transit model being favored over a 
-        constant with median equal to the median of the signal
+    ### Statistical Test Methods ###
+
+    def _stat_test_prep(self, dfrac, use_mcmc_params, mask_others, fold_bjd):
+        """Prep function to return the bjd, cut, fnorm, efnorm and model to run a 
+        statistical test on
         """
         # Assemble the timeseries
         bjd, fnorm, efnorm =\
@@ -919,59 +919,112 @@ class PlanetCandidate:
         
         if use_mcmc_params:
             T0, P, Rp, b, offset = np.median(self.mcmc_chain, axis=0)
-
+        
         # Fold and cut BJD
         bjd_folded = (bjd + P/2 - T0) % P - P/2
         cut = np.abs(bjd_folded) < dfrac*self.duration
         
         # Transit model and null model
-        model = misc.batman_model(bjd[cut], T0, P, Rp, b,
+        model = misc.batman_model(bjd, T0, P, Rp, b,
                                   R, M, u, offset)
+
+        if fold_bjd:
+            return bjd_folded, cut, fnorm, efnorm, model
+
+        return bjd, cut, fnorm, efnorm, model
+
+    
+    def deltaBIC_model(self, dfrac=1, use_offset=True, use_mcmc_params=False, 
+                       mask_others=True, pertransit=False):
+        """Return the deltaBIC of the transit model being favored over a 
+        constant with median equal to the median of the signal
+        """
+        bjd, cut, fnorm, efnorm, model = self._stat_test_prep(dfrac, 
+                                         use_mcmc_params, mask_others, 
+                                         fold_bjd=True)
+        offset = self.offset
+        
         if use_offset:
-            model_null = np.ones(sum(cut)) + offset
+            model_null = np.ones(len(model)) + offset
         else:
-            model_null = np.ones(sum(cut))*np.median(fnorm[cut])
-            
-        return misc.DeltaBIC(fnorm[cut], efnorm[cut], model, model_null, k=5)
+            model_null = np.ones(len(model))*np.median(fnorm[cut])
+
+        if not pertransit:
+            return misc.DeltaBIC(fnorm[cut], efnorm[cut], model[cut], 
+                                 model_null[cut], k=5)
+
+        ci = np.where(cut[:-1] != cut[1:])[0] + 1
+        if cut[0]: ci = np.concatenate([[0], ci])
+        if cut[-1]: ci = np.concatenate([ci, [len(cut)]])
+
+        dBICs = np.zeros(len(ci) // 2)
+        for i in range(0, len(ci), 2):
+            j, k = ci[i], ci[i+1]
+            dBIC = misc.DeltaBIC(fnorm[j:k], efnorm[j:k], model[j:k],
+                                 model_null[j:k], k=5)
+            dBICs[i//2] = dBIC
+        return dBICs
+        
+
+    def deltaBIC_model_list(self, dfrac=1, use_offset=True, 
+                            use_mcmc_params=False, mask_others=True):
+        """
+        """
+        return None
     
     
-    def red_chi2_model(self, dfrac=1, use_mcmc_params=True, mask_others=True):
+    def red_chi2_model(self, dfrac=1, use_mcmc_params=True, mask_others=True,
+                       pertransit=False):
         """Compute the reduced Chi-squared of the transit model
         """
-                # Assemble the timeseries
-        bjd, fnorm, efnorm =\
-        np.concatenate([lc.bjd for lc in self.ts.lightcurves]),\
-        np.concatenate([lc.fnorm_detrend for lc in self.ts.lightcurves]),\
-        np.concatenate([lc.efnorm for lc in self.ts.lightcurves])
-        
-        # Mask Existing planet candidates who don't match this one!
-        if mask_others:
-            for pc in self.ts.planet_candidates:
-                # Comparing results
-                if [r.period for r in pc.results]!=\
-                   [r.period for r in self.results]:
-                    fnorm = pc.mask_planet(bjd, fnorm)
-                
-        # Variables for model
-        P, T0, Rp, b, offset = self.period,self.T0,self.Rp,self.b,self.offset
-        R, M, u = self.ts.radius, self.ts.mass, self.ts.u
-        
-        if use_mcmc_params:
-            T0, P, Rp, b, offset = np.median(self.mcmc_chain, axis=0)
+        bjd, cut, fnorm, efnorm, model = self._stat_test_prep(dfrac, 
+                                         use_mcmc_params, mask_others, 
+                                         fold_bjd=True)
 
-        # Fold and cut BJD
-        bjd_folded = (bjd + P/2 - T0) % P - P/2
-        cut = np.abs(bjd_folded) < dfrac*self.duration
+        if not pertransit:
+            red_chi2 = sum(((fnorm[cut]-model[cut]) / efnorm[cut])**2) / (sum(cut)-5)
+            return red_chi2
+
+        ci = np.where(cut[:-1] != cut[1:])[0] + 1
+        if cut[0]: ci = np.concatenate([[0], ci])
+        if cut[-1]: ci = np.concatenate([ci, [len(cut)]])
+
+        red_chi2s = np.zeros(len(ci) // 2)
+        for i in range(0, len(ci), 2):
+            j, k = ci[i], ci[i+1]
+            red_chi2s[i//2] = sum(((fnorm[j:k]-model[j:k]) /\
+                                   efnorm[j:k])**2) / (k-j-5)
         
-        # Transit model and null model
-        model = misc.batman_model(bjd[cut], T0, P, Rp, b,
-                                  R, M, u, offset)
-        
-        red_chi2 = sum(((fnorm[cut]-model) / efnorm[cut])**2) / (sum(cut)-5)
-        
-        return red_chi2
+        return red_chi2s
+
     
+    def KS_residuals(self, dfrac=1, use_mcmc_params=True, mask_others=True,
+                     pertransit=False):
+        """Use the KS Test to determine if the residuals of the lightcurve are 
+        gaussian when the transit model is removed
+        """
+        bjd, cut, fnorm, efnorm, model = self._stat_test_prep(dfrac, 
+                                         use_mcmc_params, mask_others, 
+                                         fold_bjd=True)
+        fnorm_resid = fnorm - model
         
+        if not pertransit:
+            prob_D = dt.ks_noise_test(fnorm_resid[cut])
+            return prob_D
+
+        ci = np.where(cut[:-1] != cut[1:])[0] + 1
+        if cut[0]: ci = np.concatenate([[0], ci])
+        if cut[-1]: ci = np.concatenate([ci, [len(cut)]])
+
+        prob_Ds = np.zeros(len(ci) // 2)
+        for i in range(0, len(ci), 2):
+            j, k = ci[i], ci[i+1]
+            prob_Ds[i//2] = dt.ks_noise_test(fnorm_resid[j:k])
+        return prob_Ds
+        
+    
+    ### Plotting Methods ###
+    
     def plot_results(self, savefig=None, show=True, title=None):
         """Plot the TLS results that motivate this planet candidate
         """

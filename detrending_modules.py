@@ -4,7 +4,7 @@ import pymc3_ext as pmx
 import aesara_theano_fallback.tensor as tt
 from celerite2.theano import terms, GaussianProcess
 from gls import Gls
-from scipy.stats import norm
+from scipy.stats import norm, kstest
 
 from scipy.signal import savgol_filter
 
@@ -243,7 +243,7 @@ def build_model_RotationTerm(bjd, fnorm, efnorm, Prot):
     return map_soln
         
 
-def ks_noise_test(fnorm_detrend):
+def ks_noise_test(fnorm_detrend, mu=None, sigma=None, _use_scipy=True):
     """
     Use the KS-test to determine whether a detrended lightcurve is consistent
     with white noise
@@ -256,23 +256,31 @@ def ks_noise_test(fnorm_detrend):
     prob_D:
         The probability that the light curve is drawn from gaussuian noise
     """
+    
     # fnorm_cdf = cdf(fnorm_detrend)
-    mu, sigma = np.mean(fnorm_detrend), np.std(fnorm_detrend)
+    if mu is None:
+        mu = np.mean(fnorm_detrend)
+    if sigma is None:
+        sigma = np.std(fnorm_detrend)
     gauss_cdf = lambda x: norm.cdf(x, loc=mu, scale=sigma)
-    
-    fnorm_sort = np.sort(fnorm_detrend)
-    diffs = np.zeros(2*len(fnorm_sort))
-    
-    for i, dat in enumerate(fnorm_sort):
-        diffs[i] = abs(gauss_cdf(dat) - (i+1)/len(fnorm_sort))
-        diffs[i+len(fnorm_sort)] = abs(gauss_cdf(dat-1e-5) - i/len(fnorm_sort))
 
-    # Take max
-    D = max(np.abs(diffs)) 
-    N = len(fnorm_detrend)
+    if _use_scipy:
+        prob_D = kstest(fnorm_detrend, gauss_cdf).pvalue
+
+    else:
+        fnorm_sort = np.sort(fnorm_detrend)
+        diffs = np.zeros(2*len(fnorm_sort))
+        
+        for i, dat in enumerate(fnorm_sort):
+            diffs[i] = abs(gauss_cdf(dat) - (i+1)/len(fnorm_sort))
+            diffs[i+len(fnorm_sort)] = abs(gauss_cdf(dat-1e-5) - i/len(fnorm_sort))
     
-    # KS Test probability
-    prob_D = Q_KS((N**0.5 + 0.12 + 0.11/N**0.5)*D)
+        # Take max
+        D = max(np.abs(diffs)) 
+        N = len(fnorm_detrend)
+        
+        # KS Test probability
+        prob_D = 1 - Q_KS((N**0.5 + 0.12 + 0.11/N**0.5)*D)
     
     return prob_D
 
@@ -292,7 +300,7 @@ def Q_KS(z):
     if z == 0:
         return 1
     
-    print(z)
+    # print(z)
     y = np.exp(-1.23370055013616983/z**2)
     P_KS = 2.25675833419102515*np.sqrt(-np.log(y))*\
            (y + y**9 + y**25 + y**49)
