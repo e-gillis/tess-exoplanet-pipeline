@@ -108,7 +108,8 @@ def phase_fold(bjd, P, T0):
     return folded_t
 
 
-def plot_result(result, savefig=None, show=True, fig=None, ax=None):
+def plot_result(result, savefig=None, show=True, fig=None, ax=None,
+                title_ext=None):
     if fig is None or ax is None:
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6,3))
     
@@ -120,8 +121,11 @@ def plot_result(result, savefig=None, show=True, fig=None, ax=None):
         ax.axvline(result.period/n, alpha=0.4, lw=1, linestyle="dashed")
     ax.set_xlabel("Period (Days)")
     ax.set_ylabel("SDE")
-    
-    ax.set_title(f'SDE Peak at {round(result.period, 4)} Days')
+
+    title = f'SDE Peak at {round(result.period, 4)} Days'
+    if title_ext is not None:
+        title += title_ext
+    ax.set_title(title)
     
     if savefig:
         fig.savefig(savefig, bbox_inches='tight')

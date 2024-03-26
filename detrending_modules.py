@@ -308,7 +308,7 @@ def Q_KS(z):
     return P_KS
 
 
-### Flare Finding Function ###
+### Flare Finding and Masking Functions ###
 def flare_mask(fnorm, n, nsigma):
     """Find Flares in fnorm and return a flare mask with sequences of n
     consecutive points or more nsigma above the median.
@@ -324,6 +324,126 @@ def flare_mask(fnorm, n, nsigma):
         flare_mask[i:i+len(consecutive)] = flare_mask[i:i+len(consecutive)]\
                                            | consecutive
         
+    return flare_mask
+
+
+def get_cumsum(series):
+    """Return a boolean array the same shape as series representing the change
+    points
+    """
+    mean = np.mean(series)
+    cumsum = np.zeros(len(series)+1)
+    for i in range(len(series)):
+        cumsum[i+1] = cumsum[i] + (series[i]-mean)
+    cumsum = cumsum[1:]
+
+    return cumsum
+
+
+def get_sdiff(series, bs=1000):
+    """Return sdiff in the cumsum and the confidence level
+    """
+    cumsum = get_cumsum(series)
+    S0_diff = np.max(cumsum) - np.min(cumsum)
+
+    S_diffs = np.zeros(bs)
+    for i in range(bs):
+        indeces = np.random.choice(np.arange(len(series)), len(series),
+                                   replace=False)
+        series_boot = series[indeces]
+        cumsum = get_cumsum(series_boot)
+        S_diffs[i] = np.max(cumsum) - np.min(cumsum)
+
+    return S0_diff, sum(S_diffs >= S0_diff) / bs
+
+# Recursion Error in this code
+def get_changepoints(series):
+    """Recursively split a series to find changepoints in a series until no 
+    more are found
+    """
+    if len(series) == 0:
+        return []
+    
+    cumsum = get_cumsum(series)
+    sdiff, confidence = get_sdiff(series)
+    pt = np.argmax(cumsum)#+ 1
+
+    if pt == len(series) or pt == 0:
+        return [series]
+    elif confidence < 0.1:
+        # Recurse somehow?
+        return get_changepoints(series[:pt]) + get_changepoints(series[pt:])
+        # return get_changepoints(series[:pt]) + [np.array([series[pt]])] +\
+               # get_changepoints(series[pt+1:])
+    else:
+        return [series]
+
+def normalize_flare(series):
+    """Normalize a flare based on the identified changepoints in series
+    """
+    changepoint_series = get_changepoints(series)
+    # print("Changepoints Found")
+    normed_slices = [s/np.mean(s) for s in changepoint_series]
+    
+    return np.concatenate(normed_slices)
+
+
+def get_flare_mask(series):
+    """Return index mask for flares based on normed changepoints
+    """
+    changepoint_series = get_changepoints(series)
+    normed_slices = [s/np.mean(s) for s in changepoint_series]
+
+    normed_f_series = np.concatenate(normed_slices)
+    series_diff = np.convolve(normed_f_series, np.array([1, -1]), mode='same')
+    edge_mask = np.convolve(abs(series_diff) < 1e8, np.ones(4), mode='same') > 0
+
+    print(len(series), len(normed_f_series), len(edge_mask))
+    
+    return edge_mask
+    
+def full_flare_mask(fnorm, width=20):
+    """Identify outliers, and make a mask of the surrounding data
+    """
+    flare_outliers = flare_mask(fnorm, 3, 3)
+    flare_conv = np.convolve(flare_outliers, np.ones(width), mode='same')
+    return flare_conv > 0
+
+def mask_flares(fnorm, bjd, width=20):
+    """Mask flares by looking at where changepoints have been normalized to the mean
+    """
+    full_flares = full_flare_mask(fnorm, width)
+    change_indeces = []
+    if full_flares[0]:
+        change_indeces.append(0)
+    
+    for i in range(1, len(full_flares)):
+        if full_flares[i-1] != full_flares[i]:
+            change_indeces.append(i)
+
+    if full_flares[-1]:
+        change_indeces.append(len(full_flares))
+
+    print(len(change_indeces))
+    # Make sure there's an even number
+    assert (len(change_indeces) % 2) == 0
+
+    flare_cuts = np.array(change_indeces).reshape(len(change_indeces)//2, 2)
+
+    # Shift everything towards the end of the flare
+    # flare_cuts += (width//3)
+    print(flare_cuts[:,1] - flare_cuts[:,0])
+
+    # return [fnorm[fp[0]:fp[1]] for fp in flare_cuts]
+    normed_flares = []
+    flare_mask = np.ones(len(fnorm), dtype=bool)
+
+    for fp in flare_cuts:
+        f_series = fnorm[fp[0]:fp[1]]
+        f_mask = get_flare_mask(f_series)
+
+        flare_mask[fp[0]:fp[1]] = ~f_mask 
+
     return flare_mask
 
 

@@ -2,6 +2,8 @@ import numpy as np
 import requests, re, os
 from astropy.io import fits
 from astroquery.mast import Catalogs
+import detrending_modules as dt
+
 
 from misc_functions import *
 
@@ -28,7 +30,7 @@ def get_star_info(tic):
     return Teff, logg, radius, radius_err, mass, mass_err, RA, Dec
 
 
-def get_tess_data(tic, minsector=1, maxsector=65):
+def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True):
     """Return TESS timeseries arrays based on the tic
     
     === Arguments ===
@@ -96,7 +98,7 @@ def get_tess_data(tic, minsector=1, maxsector=65):
     texps = np.concatenate(texps_list)
 
     # Cut down the data        
-    cut = upper_sigma_clip(fnorm, sig=7)        
+    cut = np.ones(len(bjd), dtype=bool)
     cut = cut & (qual_flags == 0)
     cut = cut & (np.isfinite(fnorm))
     cut = cut & (np.isfinite(efnorm)) 
@@ -105,6 +107,16 @@ def get_tess_data(tic, minsector=1, maxsector=65):
     bjd, fnorm, efnorm = bjd[cut], fnorm[cut], efnorm[cut], 
     sectors, qual_flags, texps = sectors[cut], qual_flags[cut], texps[cut]
 
+    # Now sigma clip and mask flares
+    cut = np.ones(len(bjd), dtype=bool)
+    if sigclip:
+        cut = upper_sigma_clip(fnorm, sig=7)  & cut
+    if mask_flares:
+        cut = dt.mask_flares(fnorm, bjd, width=100) & cut
+    
+    bjd, fnorm, efnorm = bjd[cut], fnorm[cut], efnorm[cut], 
+    sectors, qual_flags, texps = sectors[cut], qual_flags[cut], texps[cut]
+        
     return bjd, fnorm, efnorm, sectors, qual_flags, texps
     
 
@@ -152,3 +164,5 @@ def get_tess_filenames(tic, minsector=1, maxsector=55):
                               for fits_name in fits_names[:1]])
         
     return filenames
+
+

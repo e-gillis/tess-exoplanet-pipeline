@@ -299,11 +299,16 @@ class TransitSearch:
             try:
                 self.pcs[i].run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN, 
                             progress=progress, mask_others=mask_planets)
+            
                 if self.pcs[i].deltaBIC_model(use_mcmc_params=True) > -10:
                     self.pcs[i].flags.append("Null Model Favoured")
                     self.pcs_p.append(self.pcs.pop(i))
                 elif self.pcs[i].red_chi2_model(use_mcmc_params=True) > 1.5:
                     self.pcs[i].flags.append("Poor fit by chi2 test")
+                    self.pcs_p.append(self.pcs.pop(i))
+                elif self.pcs[i].KS_residuals(use_mcmc_params=True) < 0.2 and\
+                     self.pcs[i].snr < 10:
+                    self.pcs[i].flags.append("Non-Gaussian White Noise")
                     self.pcs_p.append(self.pcs.pop(i))
                 else:
                     i += 1
@@ -410,6 +415,10 @@ class LightCurve:
         List of methods used to detrend the lightcurve 
     fnorm_detrend: numpy array
         Detrended flux using various methods recorded in detrend_methods
+    trend: numpy array
+        Trend which is subtracted from the normalized lighttcurve to obtain the
+        detrended lightcurve. Trend does not contain information about 
+        resampled sigma clipped points and flares.
     """
     
     def __init__(self, bjd, fnorm, efnorm, sectors, qual_flags, texp):
@@ -427,7 +436,8 @@ class LightCurve:
         
         self.detrended = False
         self.detrend_methods = []
-        self.fnorm_detrend = None       
+        self.fnorm_detrend = None
+        self.trend = None
         
     
     def get_splits(self, series, split_bjd=False, consecutive_sectors=True):
@@ -496,12 +506,21 @@ class LightCurve:
                 fnorm_detrend_s.append(fnorm_detrend)
             
             self.fnorm_detrend = np.concatenate(fnorm_detrend_s)
+
+        # Save the trend before sigma clipping and masking
+        self.trend = self.fnorm - self.fnorm_detrend
+
+        # Mask flares with noise:
+        flare_mask = dt.mask_flares(self.fnorm_detrend, self.bjd, width=100)
+        self.fnorm_detrend[~flare_mask] = np.random.normal(loc=1, 
+                                          scale=np.std(self.fnorm_detrend[flare_mask]),
+                                          size=sum(~flare_mask))   
                 
         # Sigma Clip with noise
         clip = misc.upper_sigma_clip(self.fnorm_detrend, sig=5)
         self.fnorm_detrend[~clip] = np.random.normal(loc=1, 
                                     scale=np.std(self.fnorm_detrend[clip]),
-                                    size=sum(~clip))
+                                    size=sum(~clip))        
 
         # Normalize detrended curve
         self.fnorm_detrend += 1 - np.median(self.fnorm_detrend)
@@ -812,7 +831,7 @@ class PlanetCandidate:
         time_span = bjd[-1]-bjd[0]
         while len(period_grid(self.ts.radius, self.ts.mass,time_span,
                               P-P_delta,P+P_delta,oversampling_factor)) < 150:
-            oversampling_factor *= 2
+            oversamplicng_factor *= 2
                 
         # Fit period with limited TLS
         model_full = transitleastsquares(bjd, fnorm, efnorm)
@@ -1027,13 +1046,25 @@ class PlanetCandidate:
     
     def plot_results(self, savefig=None, show=True, title=None):
         """Plot the TLS results that motivate this planet candidate
+
+        Add titles to each suplot with sector information
         """
         fig, axs = plt.subplots(ncols=1, nrows=len(self.results), 
                                 figsize=(6, 3*len(self.results)),
                                 squeeze=False)
-        
+
+        f_bjd, f_sector = np.concatenate([lc.bjd for lc in self.ts.lightcurves]),\
+                          np.concatenate([lc.sectors for lc in self.ts.lightcurves])
+
         for i, result in enumerate(self.results):
-            misc.plot_result(result, show=False, fig=fig, ax=axs[0][i])
+
+            # Sector array at closest bjd to each transit time
+            sectors = np.array([f_sector[np.argmin(abs(f_bjd-tt))] 
+                                for tt in result.transit_times])
+            sectors = np.unique(sectors)
+            misc.plot_result(result, show=False, fig=fig, ax=axs[i][0], 
+                             title_ext=f", Sectors: {str(list(sectors))[1:-1]}")
+        plt.tight_layout()
             
         if savefig is not None:
             fig.savefig(savefig, bbox_inches='tight')
@@ -1045,7 +1076,7 @@ class PlanetCandidate:
         """
         Plot the timeseries from each lightcurve and highlight transits in
         the timeseries based on the characterized parameters. 
-
+    
         === Arguments ===
         title: str or None
             If not None, title of the plot. Default: None
@@ -1054,21 +1085,52 @@ class PlanetCandidate:
         savefig: str or None
             If not None, path to save the plot at. Default: None
         """
-        fig, axs = plt.subplots(ncols=1, nrows=len(self.ts.lightcurves),
-                                figsize=(6, 3*len(self.ts.lightcurves)))
-
+        # This makes the figure as one column, remake to n columns
+        fig, axs = plt.subplots(ncols=len(self.ts.lightcurves), nrows=2,
+                                figsize=(6*len(self.ts.lightcurves), 6),
+                                sharey='row', sharex='col', 
+                                gridspec_kw={"wspace":0.02, "hspace":0.05},
+                                squeeze=False)
+    
         for i, lc in enumerate(self.ts.lightcurves):
-            axs[i].scatter(lc.bjd, lc.fnorm_detrend, color="tab:blue", s=0.1)
+    
+            # Plot detrended lightcurves with intransit points orange        
+            axs[1][i].scatter(lc.bjd, lc.fnorm_detrend, color="tab:blue", s=0.1)
             mask = transit_mask(lc.bjd, self.period, self.duration, self.T0)
             
-            axs[i].scatter(lc.bjd[mask], lc.fnorm_detrend[mask], 
-                           color="tab:orange", s=2)
+            axs[1][i].scatter(lc.bjd[mask], lc.fnorm_detrend[mask], 
+                           color="tab:orange", s=3)
+    
+            # Plot the lightcurve with trend overplotted and orange transits
+            # highlighted orange
+            axs[0][i].scatter(lc.bjd, lc.fnorm, color="tab:blue", s=0.1)
             
-            axs[i].set_ylabel("Detrended Flux")
-            axs[i].set_xlim(min(lc.bjd), max(lc.bjd))
-            axs[i].grid()
-
-        axs[-1].set_xlabel("BJD")
+            big_gaps = (lc.bjd[1:] - lc.bjd[:-1]) > 0.1
+            big_gaps = np.concatenate((big_gaps, np.array([False])))
+            
+            nantrend = np.copy(lc.trend)
+            nantrend[big_gaps] = np.ones(sum(big_gaps))*np.nan
+            
+            axs[0][i].plot(lc.bjd, nantrend+1, color='k', lw=1)
+    
+            mask = mask.astype(int)
+            transit_edges = abs(mask[1:] - mask[:-1]) > 1e-10
+            transit_edges = np.concatenate((transit_edges, np.array([False])))
+            # Make sure the number of edges is even
+            if sum(transit_edges) % 2 != 0:
+                continue
+            transit_bjds = (lc.bjd[transit_edges]).reshape(sum(transit_edges)//2, 2)
+    
+            
+            for bjds in transit_bjds:
+                axs[0][i].axvspan(bjds[0], bjds[1], color="tab:orange", alpha=0.5, 
+                                  zorder=-1)
+    
+            axs[-1][i].set_xlim(min(lc.bjd), max(lc.bjd))
+            axs[-1][i].set_xlabel("BJD")
+    
+        axs[0][0].set_ylabel("Normalized Flux")
+        axs[1][0].set_ylabel("Detrended Flux")
         
         if savefig is not None:
             fig.savefig(savefig, bbox_inches='tight')
