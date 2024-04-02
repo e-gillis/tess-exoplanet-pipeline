@@ -831,7 +831,7 @@ class PlanetCandidate:
         time_span = bjd[-1]-bjd[0]
         while len(period_grid(self.ts.radius, self.ts.mass,time_span,
                               P-P_delta,P+P_delta,oversampling_factor)) < 150:
-            oversamplicng_factor *= 2
+            oversampling_factor *= 2
                 
         # Fit period with limited TLS
         model_full = transitleastsquares(bjd, fnorm, efnorm)
@@ -1095,7 +1095,7 @@ class PlanetCandidate:
         for i, lc in enumerate(self.ts.lightcurves):
     
             # Plot detrended lightcurves with intransit points orange        
-            axs[1][i].scatter(lc.bjd, lc.fnorm_detrend, color="tab:blue", s=0.1)
+            axs[1][i].scatter(lc.bjd, lc.fnorm_detrend, color="tab:blue", s=0.1, alpha=0.7)
             mask = transit_mask(lc.bjd, self.period, self.duration, self.T0)
             
             axs[1][i].scatter(lc.bjd[mask], lc.fnorm_detrend[mask], 
@@ -1103,7 +1103,7 @@ class PlanetCandidate:
     
             # Plot the lightcurve with trend overplotted and orange transits
             # highlighted orange
-            axs[0][i].scatter(lc.bjd, lc.fnorm, color="tab:blue", s=0.1)
+            axs[0][i].scatter(lc.bjd, lc.fnorm, color="tab:blue", s=0.1, alpha=0.7)
             
             big_gaps = (lc.bjd[1:] - lc.bjd[:-1]) > 0.1
             big_gaps = np.concatenate((big_gaps, np.array([False])))
