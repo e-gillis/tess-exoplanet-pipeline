@@ -1156,7 +1156,7 @@ class PlanetCandidate:
         mc.plot_chain_dists(self.mcmc_chain, self.priors, 
                             title=title, savefig=savefig, show=show)
         
-    def model_plot(self, savefig=None, show=True, title=None, depthnorm=False):
+    def model_plot(self, savefig=None, show=True, title=None, depthnorm=None):
         if self.mcmc_chain is None:
                 print("run_mcmc method must be run first!")
                 return None
