@@ -205,7 +205,7 @@ def plot_chain_dists(chain, priors, title=None, savefig=None, show=True):
         plt.show()
         
 
-def plot_model(pc, ts, savefig=None, show=False, title=None, depthnorm=True):
+def plot_model(pc, ts, savefig=None, show=False, title=None, depthnorm=None):
     
     chain = pc.mcmc_chain
     plt.figure(figsize=(12,4))

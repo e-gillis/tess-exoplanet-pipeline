@@ -1095,7 +1095,8 @@ class PlanetCandidate:
         for i, lc in enumerate(self.ts.lightcurves):
     
             # Plot detrended lightcurves with intransit points orange        
-            axs[1][i].scatter(lc.bjd, lc.fnorm_detrend, color="tab:blue", s=0.1, alpha=0.7)
+            axs[1][i].scatter(lc.bjd, lc.fnorm_detrend, color="tab:blue", 
+                              s=0.1, alpha=0.7)
             mask = transit_mask(lc.bjd, self.period, self.duration, self.T0)
             
             axs[1][i].scatter(lc.bjd[mask], lc.fnorm_detrend[mask], 
@@ -1156,7 +1157,7 @@ class PlanetCandidate:
         mc.plot_chain_dists(self.mcmc_chain, self.priors, 
                             title=title, savefig=savefig, show=show)
         
-    def model_plot(self, savefig=None, show=True, title=None, depthnorm=False):
+    def model_plot(self, savefig=None, show=True, title=None, depthnorm=None):
         if self.mcmc_chain is None:
                 print("run_mcmc method must be run first!")
                 return None
@@ -1176,10 +1177,12 @@ class PlanetCandidate:
         """Save all relevant plots in a directory
         """
         ptag = round(self.period, 2)
-        self.chain_evos_plot(f'{savedir}/{ptag:0.2f}_chain_evo_{self.ts.tic}.pdf')
-        self.chain_dists_plot(f'{savedir}/{ptag:0.2f}_dists_{self.ts.tic}.pdf')
-        self.model_plot(f'{savedir}/{ptag:0.2f}_model_{self.ts.tic}.pdf')
-        self.corner_plot(f'{savedir}/{ptag:0.2f}_corner_{self.ts.tic}.pdf')
+        self.chain_evos_plot(f'{savedir}/{ptag:0.2f}_chain_evo_{self.ts.tic}.pdf', False)
+        self.chain_dists_plot(f'{savedir}/{ptag:0.2f}_dists_{self.ts.tic}.pdf', False)
+        self.model_plot(f'{savedir}/{ptag:0.2f}_model_{self.ts.tic}.pdf', 
+                        False, depthnorm=2.2)
+        self.corner_plot(f'{savedir}/{ptag:0.2f}_corner_{self.ts.tic}.pdf', False)
+        plt.close('all')        
     
     
 ### Loading back objects
