@@ -27,7 +27,7 @@ def sincurve(x, amp, T0, P, offset):
 
 
 def bin_curve(bjd, fnorm, efnorm, bin_width=10, even_bins=False,
-              bin_length=0.007):
+              bin_length=0.007, use_rms=True):
     """Bin a given lightcurve 
     """
     if even_bins:
@@ -53,12 +53,15 @@ def bin_curve(bjd, fnorm, efnorm, bin_width=10, even_bins=False,
     bin_fnorm  = np.zeros(len(bin_indeces)-1)
     bin_efnorm = np.zeros(len(bin_indeces)-1)
     
+    # Could use weighted mean
     for i in range(len(bin_indeces)-1):
         j, k = bin_indeces[i], bin_indeces[i+1]
         bin_bjd[i] = np.mean(bjd[j:k])
         bin_fnorm[i] = np.median(fnorm[j:k])
-        bin_efnorm[i] = ((np.std(fnorm[j:k])**2+\
-                          np.mean(efnorm[j:k])**2)/(k-j))**0.5
+        if use_rms:
+            bin_efnorm[i] = (np.std(fnorm[j:k])**2/(k-j))**0.5
+        else:
+            bin_efnorm[i] = (np.mean(efnorm[j:k])**2/(k-j))**0.5
         
     return bin_bjd, bin_fnorm, bin_efnorm
 
