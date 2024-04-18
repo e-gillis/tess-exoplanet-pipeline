@@ -961,7 +961,10 @@ class PlanetCandidate:
         bjd, cut, fnorm, efnorm, model = self._stat_test_prep(dfrac, 
                                          use_mcmc_params, mask_others, 
                                          fold_bjd=True)
-        offset = self.offset
+        if use_mcmc_params:
+            offset =  np.median(self.mcmc_chain, axis=0)[-1]
+        else:
+            offset = self.offset
         
         if use_offset:
             model_null = np.ones(len(model)) + offset
