@@ -534,6 +534,7 @@ class LightCurve:
         fnorms = self.get_splits([self.fnorm_detrend], 
                                  consecutive_sectors=False)[0]
         if method == 'noise':
+            np.random.seed(42)
             for i in range(len(fnorms)):
                 fnorm = fnorms[i]
                 f_mask = dt.flare_mask(fnorm, n, nsigma)
