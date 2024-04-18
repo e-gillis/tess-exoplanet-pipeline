@@ -18,6 +18,8 @@ def DeltaBIC(y, ey, model, modelnull, k=5, knull=1):
     # theta = {P,T0,D,Z,baseline}
     BIC_model = k*np.log(len(y)) - 2*lnlike(y, ey, model)   
     BIC_null = knull*np.log(len(y)) - 2*lnlike(y, ey, modelnull)
+
+    # print(BIC_model, BIC_null)
     
     return BIC_model - BIC_null
 
