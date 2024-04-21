@@ -299,11 +299,26 @@ class TransitSearch:
             try:
                 self.pcs[i].run_mcmc(nsteps=ITERATIONS, burn_in=BURN_IN, 
                             progress=progress, mask_others=mask_planets)
-            
-                if self.pcs[i].deltaBIC_model(use_mcmc_params=True) > -10:
-                    self.pcs[i].flags.append("Null Model Favoured")
+                
+            except ValueError:
+                self.pcs[i].flags.append("MCMC Failed, ValueError")
+                self.pcs_p.append(self.pcs.pop(i))
+            i += 1
+
+        # Rejection loop instead of just one pass?
+        rejected_last = True
+        while rejected_last:
+            i = 0
+            rejected_last = False
+            while i < len(self.pcs):
+                ilast = i
+                if self.pcs[i].deltaBIC_model(use_mcmc_params=True, use_offset=True) > -10:
+                    self.pcs[i].flags.append("Offset Null Model Favoured")
                     self.pcs_p.append(self.pcs.pop(i))
-                elif self.pcs[i].red_chi2_model(use_mcmc_params=True) > 1.5:
+                elif self.pcs[i].deltaBIC_model(use_mcmc_params=True, use_offset=False) > -10:
+                    self.pcs[i].flags.append("Median Null Model Favoured")
+                    self.pcs_p.append(self.pcs.pop(i))
+                elif self.pcs[i].red_chi2_model(dfrac=3, use_mcmc_params=True) > 1.5:
                     self.pcs[i].flags.append("Poor fit by chi2 test")
                     self.pcs_p.append(self.pcs.pop(i))
                 elif self.pcs[i].KS_residuals(use_mcmc_params=True) < 0.2 and\
@@ -312,10 +327,9 @@ class TransitSearch:
                     self.pcs_p.append(self.pcs.pop(i))
                 else:
                     i += 1
+
+                rejected_last = rejected_last or (i == ilast)
                 
-            except ValueError:
-                self.pcs[i].flags.append("MCMC Failed, ValueError")
-                self.pcs_p.append(self.pcs.pop(i))        
                 
     
     def plot_transits(self):
