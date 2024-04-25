@@ -303,6 +303,8 @@ class TransitSearch:
             except ValueError:
                 self.pcs[i].flags.append("MCMC Failed, ValueError")
                 self.pcs_p.append(self.pcs.pop(i))
+                continue
+            
             i += 1
 
         # Rejection loop instead of just one pass?
