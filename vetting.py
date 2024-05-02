@@ -107,7 +107,7 @@ def half_sectors_or_more(results_list, lc_lengths, tag=512):
     """Given a full set of results, flag all signals that only appear in less
     than half of the lightcurves from a target
     
-    Results with a sufficiently high SDE will be 
+    Results with a sufficiently high SDE will be excempt
     """
     full_tags = [np.zeros(i) for i in [len(r) for r in results_list]]
     
@@ -132,7 +132,7 @@ def half_sectors_or_more(results_list, lc_lengths, tag=512):
             # Total number of sectors where this result could have been found
             sector_num = sum(lc_lengths > P*2)
             
-            if count < sector_num//2:
+            if count < sector_num // 2:
                 full_tags[i][j] += tag
                     
     return full_tags
