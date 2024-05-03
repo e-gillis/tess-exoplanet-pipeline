@@ -397,8 +397,6 @@ def get_flare_mask(series):
     normed_f_series = np.concatenate(normed_slices)
     series_diff = np.convolve(normed_f_series, np.array([1, -1]), mode='same')
     edge_mask = np.convolve(abs(series_diff) < 1e8, np.ones(4), mode='same') > 0
-
-    print(len(series), len(normed_f_series), len(edge_mask))
     
     return edge_mask
     
@@ -424,7 +422,6 @@ def mask_flares(fnorm, bjd, width=20):
     if full_flares[-1]:
         change_indeces.append(len(full_flares))
 
-    print(len(change_indeces))
     # Make sure there's an even number
     assert (len(change_indeces) % 2) == 0
 
@@ -432,7 +429,6 @@ def mask_flares(fnorm, bjd, width=20):
 
     # Shift everything towards the end of the flare
     # flare_cuts += (width//3)
-    print(flare_cuts[:,1] - flare_cuts[:,0])
 
     # return [fnorm[fp[0]:fp[1]] for fp in flare_cuts]
     normed_flares = []

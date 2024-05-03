@@ -1344,7 +1344,6 @@ class InjecrecTS(TransitSearch):
 
             lc.detrended = False
             lc.trend, lc.fnorm_detrend, lc.detrend_methods = None, None, []
-            lc.detrend_lc()
         
         return None
 
