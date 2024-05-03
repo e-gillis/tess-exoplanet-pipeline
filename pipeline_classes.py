@@ -12,6 +12,8 @@ from transitleastsquares import tls_constants, catalog_info, period_grid
 from transitleastsquares import transitleastsquares, transit_mask
 tls_constants.MINIMUM_PERIOD_GRID_SIZE = 2
 
+from exofop.download.identifiers import TIC
+
 import get_tess_data as gtd
 import detrending_modules as dt
 import planet_search as ps
@@ -1338,7 +1340,7 @@ class InjecrecTS(TransitSearch):
                 bjd_end += P
 
             lc.detrended = False
-            lc.trend, lc.fnorm_detrend, c.detrend_methods = None, None, []
+            lc.trend, lc.fnorm_detrend, lc.detrend_methods = None, None, []
             lc.detrend_lc()
         
         return None
