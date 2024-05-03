@@ -70,7 +70,7 @@ class TransitSearch:
         and planet_candidates_plausible
     """
     
-    def __init__(self, tic):
+    def __init__(self, tic, detrend=True):
         """
         Initialization method for the TransitSearch
         
@@ -88,14 +88,15 @@ class TransitSearch:
         for i in range(len(lc_series[0])):
             series_set = [series[i] for series in lc_series]
             self.lightcurves.append(LightCurve(*series_set))
-            self.lightcurves[-1].detrend_lc()
+            if detrend:
+                self.lightcurves[-1].detrend_lc()
         
         # Star Parameters
         Teff, logg, radius, radius_err,\
         mass, mass_err, RA, Dec = gtd.get_star_info(tic)
         
         assert not (np.isnan(radius) and np.isnan(mass)),\
-       "Radius and Mass cannot both be NaN, catalog query failed"
+        "Radius and Mass cannot both be NaN, catalog query failed"
         
         
         u = catalog_info(TIC_ID=tic)[0]
@@ -303,6 +304,8 @@ class TransitSearch:
             except ValueError:
                 self.pcs[i].flags.append("MCMC Failed, ValueError")
                 self.pcs_p.append(self.pcs.pop(i))
+                continue
+            
             i += 1
 
         # Rejection loop instead of just one pass?
@@ -1292,4 +1295,200 @@ class PlanetCandidateUpdate(PlanetCandidate):
                 
             else:
                 setattr(self, attr_name, attr)
+
+
+""" Injection Recovery Modules """
+class InjecrecTS(TransitSearch):
+
+    def __init__(self, tic):
+        # Inherited Attributes
+        TransitSearch.__init__(self, tic, detrend=False)
+        # List of (T0, P, Rp, b)
+        self.injected = np.zeros(4)*np.nan
+        # recovery dictionary
+        self.recovery_dict = {}
+
+    
+    def mask_planet(self, T0, P, duration):
+        """Mask the planet signals in the lightcurves by sampling noise 
+        characterized by the data before and after the transit
+        """
+        np.random.seed(42)
+        for lc in self.lightcurves:
+            intransit = transit_mask(lc.bjd, P, duration*1.1, T0)
+            transit_edges = np.convolve(intransit, np.ones(40), mode='same')>1
+            transit_edges = np.logical_xor(intransit, transit_edges)
+    
+            # Or just go through the lightcurve
+            tphase = T0 % P
+            bjd_start, bjd_end = lc.bjd[0]-tphase-P/2, lc.bjd[0]+P/2-tphase
+
+            while bjd_start < lc.bjd[-1]:
+                bjd_cut = (lc.bjd > bjd_start) & (lc.bjd < bjd_end)
+                
+                # Should have one transit, mask it
+                transit_cut = bjd_cut & intransit
+                if np.any(transit_cut):
+                    edge_cut = bjd_cut & transit_edges
+                    mean, std = np.median(lc.fnorm[edge_cut]),\
+                                np.std(lc.fnorm[edge_cut])
+                    
+                    lc.fnorm[transit_cut] = np.random.normal(loc=mean, scale=std,
+                                            size=sum(bjd_cut & intransit))
+                
+                # Increment by period length
+                bjd_start += P
+                bjd_end += P
+
+            lc.detrended = False
+            lc.trend, lc.fnorm_detrend, c.detrend_methods = None, None, []
+            lc.detrend_lc()
+        
+        return None
+
+    
+    def mask_TOIs(self):
+        """Retrieve TOI information from exofop and mask data corresponding to
+        each TOI parameter
+        """
+        exofop_tic = TIC(self.tic)
+        tab = exofop_tic.lookup()
+        T0s, Ps, durs = tab['Transit Epoch (BJD)'].to_numpy(dtype=float),\
+                        tab['Period (days)'].to_numpy(dtype=float),\
+                        tab['Duration (hours)'].to_numpy(dtype=float)/24  
+
+        for i in range(len(tab)):
+            self.mask_planet(T0s[i], Ps[i], durs[i])
+
+        return None
+        
+    
+    def mask_pcs(self, plausible=True, reject=True):
+        """Mask the signals associated with the planet candidates in this 
+        transit search
+        """
+        pcs = self.pcs
+        if plausible:
+            pcs += self.pcs_p
+        if reject:
+            pcs += self.pcs_r
+
+        for pc in pcs:
+            T0, P, duration = pc.T0, pc.period, pc.duration
+            self.mask_planet(T0, P, duration)
+
+    
+    def inject_planet(self, T0, P, Rp, b, detrend=True):
+        """Inject a planet signal into the detrended lightcurve
+        """
+        for lc in self.lightcurves:
+            model = misc.batman_model(lc.bjd, T0, P, Rp, b,
+                                      self.radius, self.mass, self.u)
+            lc.fnorm += model - 1
+
+            if detrend:
+                lc.detrend_lc()
+
+        # Set injection parameters
+        self.injected = (T0, P, Rp, b)
+        
+        return None
+    
+    
+    def check_injection(self, tolerance=0.02, plausible=False):
+        """Check the injected planet parameters, add data to the recovery dict
+        """
+        found = False
+        found_params = np.zeros(4)*np.nan
+        
+        pcs = self.pcs
+        if plausible:
+            pcs += self.pcs_p
+
+        for pc in pcs:
+            period_ratio = max(pc.period / self.injected[1], 
+                               self.injected[1] / pc.period)
+            if math.isclose(period_ratio, round(period_ratio), rel_tol=tolerance):
+                found = True
+                found_params = np.array([pc.T0, pc.period, pc.Rp, pc.b])
+                
+        self.recovery_dict[self.injected] = [found, found_params]
+
+        if found:
+            phase_diff = min((found_params[0]-self.injected[0]) % self.injected[1],
+                             (self.injected[0]-found_params[0]) % self.injected[1])
+            param_diffs = found_params / np.array(self.injected)
+            param_diffs[0] = phase_diff
+        else:
+            param_diffs = np.nan*np.ones(4)
+
+        self.recovery_dict[self.injected].append(param_diffs)
+        self.recovery_dict[self.injected].append(len(pcs) - int(found))
+        
+        return None
+
+    
+    def reset_injection(self):
+        """Reset the injected planet parameters
+        """
+        if np.any(np.isnan(np.array(self.injected))):
+            print("NaN in transit params, cannot reset")
+            return None
+        
+        T0, P, Rp, b = self.injected
+        
+        for lc in self.lightcurves:
+            model = misc.batman_model(lc.bjd, T0, P, Rp, b,
+                                      self.radius, self.mass, self.u)
+            lc.fnorm -= model - 1
+
+        # Set injection parameters
+        self.injected = np.zeros(4)*np.nan
+
+
+    def restore_lc_data(self, retain_recovery=True):
+        """Restore lightcurve data that may have been deleted
+        """
+        recovery_dict = self.recovery_dict.copy()
+
+        self.__init__(self.tic)
+        self.recovery_dict = recovery_dict
+
+
+    def save(self, filename, remove_data=False):
+        """Save the injection recovery, optionally delete lightcurve data
+        """
+        if remove_data:
+            self.lightcurves = []
+    
+        with open(filename+'.ts', "wb") as f:
+            pickle.dump(self, f)
+            
+        return None
+
+
+def load_injecrec(path, reload_data=False):
+    """Reload a saved injection recovery
+    """
+    with open(path, "rb") as f:
+        loaded_injecrec = pickle.load(f)
+
+    if reload_data:
+        loaded_injecrec.restore_lc_data(retain_recovery=True)
+    
+    return loaded_injecrec
+
+
+class InjecrecTSUpdate(TransitSearchUpdate, InjecrecTS):
+    """Class to inherit different methods
+    """
+    def __init__(self, ts):
+        # Inherited Attributes
+        TransitSearchUpdate.__init__(self, ts)
+
+        # List of (T0, P, Rp, b)
+        self.injected = np.zeros(4)*np.nan
+        # recovery dictionary
+        self.recovery_dict = {}
+
                 

@@ -1,5 +1,5 @@
 import numpy as np
-import requests, re, os
+import requests, re, os, time
 from astropy.io import fits
 from astroquery.mast import Catalogs
 import detrending_modules as dt
@@ -16,7 +16,16 @@ def get_star_info(tic):
     (Teff, logg, radius, radius_min, radius_max, 
     mass, mass_min, mass_max, RA, Dec)
     """
-    result = Catalogs.query_criteria(catalog="Tic", ID=tic).as_array()
+    retries = 0
+    while retries < 3:
+        try:
+            result = Catalogs.query_criteria(catalog="Tic",
+                     ID=tic).as_array()
+            break
+        except:
+            TimeoutError
+            retries += 1
+        
     Teff = result[0][64]
     logg = result[0][66]
     radius = result[0][70]
@@ -120,7 +129,7 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True
     return bjd, fnorm, efnorm, sectors, qual_flags, texps
     
 
-def get_tess_filenames(tic, minsector=1, maxsector=55):
+def get_tess_filenames(tic, minsector=1, maxsector=55, max_retries=3):
     """Retrive files associated with a specific TIC between minsector and 
     maxsector. This function will only retrieve the filenames of lightcurves
     with a two minute cadence hosted at:
@@ -152,7 +161,19 @@ def get_tess_filenames(tic, minsector=1, maxsector=55):
     # Go through all the sectors and see if the data is there
     for j in range(minsector, maxsector+1):
         sector = f"s{j:04}/"
-        page = requests.get(url_base + sector + dir_str)
+
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                page = requests.get(url_base + sector + dir_str)
+                break
+            except:
+                print("Connection Error, sleeping")
+                time.sleep(20)
+                retry_count += 1
+        
+        if retry_count == 3:
+            continue
                 
         # 200 is a success, we have the webpage
         if page.status_code == 200:
