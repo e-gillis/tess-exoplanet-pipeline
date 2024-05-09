@@ -31,6 +31,8 @@ def sincurve(x, amp, T0, P, offset):
 def bin_curve(bjd, fnorm, efnorm, bin_width=10, even_bins=False,
               bin_length=0.007, use_rms=True):
     """Bin a given lightcurve 
+    
+    BJD MUST BE SORTED
     """
     if even_bins:
         bjd_cuts = np.arange(bjd[0], bjd[-1]+bin_length, bin_length)

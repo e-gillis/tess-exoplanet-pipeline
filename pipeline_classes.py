@@ -13,7 +13,9 @@ from transitleastsquares import transitleastsquares, transit_mask
 tls_constants.MINIMUM_PERIOD_GRID_SIZE = 2
 
 from exofop.download.identifiers import TIC
+import math
 
+# Internal Package Imports
 import get_tess_data as gtd
 import detrending_modules as dt
 import planet_search as ps
@@ -1299,6 +1301,7 @@ class PlanetCandidateUpdate(PlanetCandidate):
                 setattr(self, attr_name, attr)
 
 
+                
 """ Injection Recovery Modules """
 class InjecrecTS(TransitSearch):
 
@@ -1306,7 +1309,7 @@ class InjecrecTS(TransitSearch):
         # Inherited Attributes
         TransitSearch.__init__(self, tic, detrend=False)
         # List of (T0, P, Rp, b)
-        self.injected = np.zeros(4)*np.nan
+        self.injected = np.zeros(5)*np.nan
         # recovery dictionary
         self.recovery_dict = {}
 
@@ -1380,7 +1383,7 @@ class InjecrecTS(TransitSearch):
 
     
     def inject_planet(self, T0, P, Rp, b, detrend=True):
-        """Inject a planet signal into the detrended lightcurve
+        """Inject a planet signal into the lightcurve
         """
         for lc in self.lightcurves:
             model = misc.batman_model(lc.bjd, T0, P, Rp, b,
@@ -1391,7 +1394,7 @@ class InjecrecTS(TransitSearch):
                 lc.detrend_lc()
 
         # Set injection parameters
-        self.injected = (T0, P, Rp, b)
+        self.injected = (T0, P, Rp, b, 0)
         
         return None
     
@@ -1400,7 +1403,7 @@ class InjecrecTS(TransitSearch):
         """Check the injected planet parameters, add data to the recovery dict
         """
         found = False
-        found_params = np.zeros(4)*np.nan
+        found_params = np.zeros(5)*np.nan
         
         pcs = self.pcs
         if plausible:
@@ -1411,14 +1414,14 @@ class InjecrecTS(TransitSearch):
                                self.injected[1] / pc.period)
             if math.isclose(period_ratio, round(period_ratio), rel_tol=tolerance):
                 found = True
-                found_params = np.array([pc.T0, pc.period, pc.Rp, pc.b])
+                found_params = np.array([pc.T0, pc.period, pc.Rp, pc.b. pc.offset])
                 
         self.recovery_dict[self.injected] = [found, found_params]
 
         if found:
             phase_diff = min((found_params[0]-self.injected[0]) % self.injected[1],
                              (self.injected[0]-found_params[0]) % self.injected[1])
-            param_diffs = found_params / np.array(self.injected)
+            param_diffs = found_params[:-1] / np.array(self.injected[:-1])
             param_diffs[0] = phase_diff
         else:
             param_diffs = np.nan*np.ones(4)
@@ -1436,7 +1439,7 @@ class InjecrecTS(TransitSearch):
             print("NaN in transit params, cannot reset")
             return None
         
-        T0, P, Rp, b = self.injected
+        T0, P, Rp, b = self.injected[:-1]
         
         for lc in self.lightcurves:
             model = misc.batman_model(lc.bjd, T0, P, Rp, b,
@@ -1444,7 +1447,7 @@ class InjecrecTS(TransitSearch):
             lc.fnorm -= model - 1
 
         # Set injection parameters
-        self.injected = np.zeros(4)*np.nan
+        self.injected = np.zeros(5)*np.nan
 
 
     def restore_lc_data(self, retain_recovery=True):
@@ -1488,7 +1491,7 @@ class InjecrecTSUpdate(TransitSearchUpdate, InjecrecTS):
         TransitSearchUpdate.__init__(self, ts)
 
         # List of (T0, P, Rp, b)
-        self.injected = np.zeros(4)*np.nan
+        self.injected = np.zeros(5)*np.nan
         # recovery dictionary
         self.recovery_dict = {}
 

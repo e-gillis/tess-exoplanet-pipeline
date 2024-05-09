@@ -221,14 +221,6 @@ def plot_model(pc, ts, savefig=None, show=False, title=None, depthnorm=None):
     sort = np.argsort(bjd_folded)
     bjd_folded, fnorm, efnorm = bjd_folded[sort], fnorm[sort], efnorm[sort]
     
-    # bins = np.arange(0, len(bjd_folded), 50)
-    # fnorm_mean, fnorm_std = np.array([[np.mean(fnorm[bins[i]:bins[i+1]]), 
-    #                                    np.std(fnorm[bins[i]:bins[i+1]])] 
-    #                                    for i in range(len(bins)-1)]).T
-    # bjd_mean, bjd_std = np.array([[np.mean(bjd_folded[bins[i]:bins[i+1]]), 
-    #                                np.std(bjd_folded[bins[i]:bins[i+1]])] 
-    #                               for i in range(len(bins)-1)]).T
-    
     bin_bjd, bin_fnorm, bin_efnorm =  bin_curve(bjd_folded, fnorm, efnorm,
                                                 even_bins=True, 
                                                 bin_length=pc.duration/8)
