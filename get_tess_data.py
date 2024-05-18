@@ -22,8 +22,7 @@ def get_star_info(tic):
             result = Catalogs.query_criteria(catalog="Tic",
                      ID=tic).as_array()
             break
-        except:
-            TimeoutError
+        except TimeoutError:
             retries += 1
         
     Teff = result[0][64]

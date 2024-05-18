@@ -1355,8 +1355,15 @@ class InjecrecTS(TransitSearch):
         """Retrieve TOI information from exofop and mask data corresponding to
         each TOI parameter
         """
-        exofop_tic = TIC(self.tic)
-        tab = exofop_tic.lookup()
+        retries = 0
+        while retries < 5:
+            try:
+                exofop_tic = TIC(self.tic)
+                tab = exofop_tic.lookup()
+                break
+            except TimeoutError:
+                retries += 1
+                
         T0s, Ps, durs = tab['Transit Epoch (BJD)'].to_numpy(dtype=float),\
                         tab['Period (days)'].to_numpy(dtype=float),\
                         tab['Duration (hours)'].to_numpy(dtype=float)/24  
@@ -1414,7 +1421,7 @@ class InjecrecTS(TransitSearch):
                                self.injected[1] / pc.period)
             if math.isclose(period_ratio, round(period_ratio), rel_tol=tolerance):
                 found = True
-                found_params = np.array([pc.T0, pc.period, pc.Rp, pc.b. pc.offset])
+                found_params = np.array([pc.T0, pc.period, pc.Rp, pc.b, pc.offset])
                 
         self.recovery_dict[self.injected] = [found, found_params]
 
