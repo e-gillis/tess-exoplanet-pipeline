@@ -327,11 +327,11 @@ class TransitSearch:
                     self.pcs[i].flags.append("Median Null Model Favoured")
                     self.pcs_p.append(self.pcs.pop(i))
                 elif self.pcs[i].red_chi2_model(dfrac=3, use_mcmc_params=True) > 1.5\
-                     and pc.snr < 10:
+                     and self.pcs[i].snr < 10:
                     self.pcs[i].flags.append("Poor fit by chi2 test")
                     self.pcs_p.append(self.pcs.pop(i))
                 elif self.pcs[i].KS_residuals(use_mcmc_params=True) < 0.2\
-                     and pc.snr < 10:
+                     and self.pcs[i].snr < 10:
                     self.pcs[i].flags.append("Non-Gaussian White Noise")
                     self.pcs_p.append(self.pcs.pop(i))
                 else:
