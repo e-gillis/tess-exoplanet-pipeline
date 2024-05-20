@@ -23,6 +23,7 @@ def get_star_info(tic):
                      ID=tic).as_array()
             break
         except TimeoutError:
+            time.sleep(30)
             retries += 1
         
     Teff = result[0][64]
