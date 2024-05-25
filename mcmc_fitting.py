@@ -98,7 +98,6 @@ def ps_mcmc_prep(pc, ts, nwalkers, mask_others):
     print(Rp, Rp_sigma)
     Rp_dist = norm(Rp, Rp_sigma)
     
-    
     walker_samplers = [T0_model, P_model, Rp_dist, b_model, offset_model]
     walker_pos = [sampler.rvs(size=nwalkers) for sampler in walker_samplers]
     walkers = np.array(walker_pos).T

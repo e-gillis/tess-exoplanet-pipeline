@@ -8,7 +8,9 @@ import batman
 # Log likelyhood of a model
 def lnlike(y, ey, model):
     assert np.all(np.isfinite(np.ascontiguousarray(ey)))
-    return -.5 * np.nansum((y-model)**2 / ey**2)
+    
+    nancut = ~np.isnan(ey) & ~(ey == 0)
+    return -.5 * np.nansum((y[nancut]-model[nancut])**2 / ey[nancut]**2)
 
 
 def DeltaBIC(y, ey, model, modelnull, k=5, knull=1):
