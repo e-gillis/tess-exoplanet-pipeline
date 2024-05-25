@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
+import time
 from inspect import ismethod
 
 from scipy.optimize import curve_fit
@@ -501,10 +502,11 @@ class LightCurve:
             except:
                 pass
 
+            # Do it again if there's residual rotation
             if not gaussian_detrended:
-                median_detrended = self.median_detrend_lc()
-            else:
-                median_detrended = self.median_detrend_lc(cont=True)
+                self.gaussian_detrend_lc(cont=True)
+
+            median_detrended = self.median_detrend_lc(cont=True)
 
         else:
             bjd_s, fnorm_s, efnorm_s = self.get_splits([self.bjd, self.fnorm,
@@ -589,7 +591,7 @@ class LightCurve:
         
         self.fnorm_detrend, self.detrended = dt.gaussian_detrend(self.bjd, 
                                              fnorm, self.efnorm)
-        
+
         if self.detrended:
             self.detrend_methods.append('gaussian')
         
@@ -1371,7 +1373,8 @@ class InjecrecTS(TransitSearch):
                 exofop_tic = TIC(self.tic)
                 tab = exofop_tic.lookup()
                 break
-            except TimeoutError:
+            except:
+                time.sleep(10)
                 retries += 1
                 
         T0s, Ps, durs = tab['Transit Epoch (BJD)'].to_numpy(dtype=float),\
@@ -1416,7 +1419,7 @@ class InjecrecTS(TransitSearch):
         return None
     
     
-    def check_injection(self, tolerance=0.02, plausible=False):
+    def check_injection(self, tolerance=0.01, plausible=False):
         """Check the injected planet parameters, add data to the recovery dict
         """
         found = False
