@@ -871,6 +871,14 @@ class PlanetCandidate:
             print("Fitting Failed, no transits found by TLS")
             self.snr = np.nan
             return None
+        if (best_result.period_uncertainty == np.inf):
+            best_result = model_full.power(period_min=P-3*P_delta, 
+                               period_max=P+3*P_delta,
+                               R_star=self.ts.radius, 
+                               M_star=self.ts.mass, 
+                               u=self.ts.u, 
+                               show_progress_bar=False,
+                               oversampling_factor=oversampling_factor)
         
         self.best_result = best_result
 
