@@ -31,7 +31,7 @@ def rotation_signal(lc, results, tag=1):
         # Make sure this is positive
         for result in results:
             if result['SDE'] > 15:
-                flag.append(np.isclose(mod, 0, atol=ratio*0.003))
+                flag.append(False)
             else:
                 ratio = max([result.period/Prot, Prot/result.period])
                 mod = min(ratio%1, (1-ratio)%1)
