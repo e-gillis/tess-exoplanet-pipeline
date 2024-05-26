@@ -30,9 +30,12 @@ def rotation_signal(lc, results, tag=1):
         flag = []
         # Make sure this is positive
         for result in results:
-            ratio = max([result.period/Prot, Prot/result.period])
-            mod = min(ratio%1, (1-ratio)%1)
-            flag.append(np.isclose(mod, 0, atol=ratio*0.003))  # 0.3% Tolerance?
+            if result['SDE'] > 15:
+                flag.append(np.isclose(mod, 0, atol=ratio*0.003))
+            else:
+                ratio = max([result.period/Prot, Prot/result.period])
+                mod = min(ratio%1, (1-ratio)%1)
+                flag.append(np.isclose(mod, 0, atol=ratio*0.003))  # 0.3% Tolerance?
         flag = np.array(flag)
          
         return tag*flag
@@ -56,10 +59,13 @@ def bad_tls_spectrum(results, tag=0):
 
 
 def duplicate_period(results, tag=2):
+    """Indexing here is broken
+    """
     flags = np.zeros(len(results))
     
     for i, r1 in enumerate(results):
         for j, r2 in enumerate(results[i+1:]):
+            j = j+i+1
             if math.isclose(r1.period, r2.period, rel_tol=0.01):
                 flags[j] = tag
                 

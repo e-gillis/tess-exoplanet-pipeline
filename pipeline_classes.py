@@ -332,7 +332,7 @@ class TransitSearch:
                     self.pcs[i].flags.append("Poor fit by chi2 test")
                     self.pcs_p.append(self.pcs.pop(i))
                 elif self.pcs[i].KS_residuals(use_mcmc_params=True) < 0.2\
-                     and self.pcs[i].snr < 10:
+                     and self.pcs[i].snr < 8:
                     self.pcs[i].flags.append("Non-Gaussian White Noise")
                     self.pcs_p.append(self.pcs.pop(i))
                 else:
