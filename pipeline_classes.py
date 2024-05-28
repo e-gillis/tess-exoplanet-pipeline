@@ -1374,7 +1374,7 @@ class InjecrecTS(TransitSearch):
                 tab = exofop_tic.lookup()
                 break
             except:
-                time.sleep(10)
+                time.sleep(np.random.randint(30, 90))
                 retries += 1
                 
         T0s, Ps, durs = tab['Transit Epoch (BJD)'].to_numpy(dtype=float),\
@@ -1432,7 +1432,7 @@ class InjecrecTS(TransitSearch):
         for pc in pcs:
             period_ratio = max(pc.period / self.injected[1], 
                                self.injected[1] / pc.period)
-            if math.isclose(period_ratio, round(period_ratio), rel_tol=tolerance):
+            if math.isclose(period_ratio, round(period_ratio), rel_tol=tolerance) and (period_ratio < 6):
                 found = True
                 found_params = np.array([pc.T0, pc.period, pc.Rp, pc.b, pc.offset])
                 
