@@ -6,6 +6,9 @@ MIN_PERIOD = 0.1
 TLS_THREADS = 32
 MASK_METHOD = 'model' # Choose between 'remove', 'noise' and 'model'
 
+# ARCHIVE?
+ARCHIVEDIR = "tess_fits"
+
 # FINDING LIGHTCURVES
 MAX_SECTOR = 65
 

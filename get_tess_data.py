@@ -2,13 +2,15 @@ import numpy as np
 import requests, re, os, time
 from astropy.io import fits
 from astroquery.mast import Catalogs
+from astropy.table import Table
 import detrending_modules as dt
+from glob import glob
 
 
 from misc_functions import *
 
 
-def get_star_info(tic):
+def get_star_info(tic, archivedir=None):
     """
     Retrieve the info of a star for a given TIC, returns a tuple of the 
     following information:
@@ -16,15 +18,32 @@ def get_star_info(tic):
     (Teff, logg, radius, radius_min, radius_max, 
     mass, mass_min, mass_max, RA, Dec)
     """
-    retries = 0
-    while retries < 3:
-        try:
-            result = Catalogs.query_criteria(catalog="Tic",
-                     ID=tic).as_array()
-            break
-        except TimeoutError:
-            time.sleep(30)
-            retries += 1
+    load = False
+    tabstr = f"{archivedir}/{tic}/{tic}_dattab.ecsv"
+    
+    if archivedir is not None:
+        make_archivedirs(tic, archivedir)
+        load = os.path.isfile(tabstr)
+        
+    if load:
+        result =  Table.read(tabstr)
+        
+    else:
+        print("Downloading Target Data")
+        retries = 0
+        while retries < 3:
+            try:
+                result = Catalogs.query_criteria(catalog="Tic",
+                         ID=tic)
+                
+                if archivedir is not None:
+                    result.write(tabstr)
+                    
+                result = result.as_array()
+                break
+            except TimeoutError:
+                time.sleep(30)
+                retries += 1
         
     Teff = result[0][64]
     logg = result[0][66]
@@ -39,7 +58,8 @@ def get_star_info(tic):
     return Teff, logg, radius, radius_err, mass, mass_err, RA, Dec
 
 
-def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True):
+def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True, 
+                  archivedir=None):
     """Return TESS timeseries arrays based on the tic
     
     === Arguments ===
@@ -64,12 +84,33 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True
     texps: numpy array
         Exposure time for each exposure. Should be 2 minutes
     """
-    # Get all the filenames
-    filenames = get_tess_filenames(tic, minsector=minsector, 
-                                   maxsector=maxsector)
     # Lists to acumulate series
     bjd_list, fnorm_list, efnorm_list = [], [], []
     sectors_list, qual_flags_list, texps_list = [], [], []
+    
+    if archivedir is not None:
+        make_archivedirs(tic, archivedir)
+        
+        # Check if directory exists!
+        if len(glob(f"{archivedir}/{tic}/*.fits")) == 0:
+            # Get all the filenames
+            filenames = get_tess_filenames(tic, minsector=minsector, 
+                                           maxsector=maxsector, verb=True)
+
+            # Make a directory for the files
+            for file in filenames:
+                # Save the files
+                hdus = fits.open(file)
+                fstr = file.split("/")[-1]
+                hdus.writeto(f"{archivedir}/{tic}/{fstr}")
+            
+        # Get all the filenames
+        filenames = glob(f"{archivedir}/{tic}/*.fits")
+
+    else:
+        # Get all the filenames
+        filenames = get_tess_filenames(tic, minsector=minsector, 
+                                       maxsector=maxsector, verb=True)
     
     # Download data
     for file in filenames:
@@ -129,7 +170,7 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True
     return bjd, fnorm, efnorm, sectors, qual_flags, texps
     
 
-def get_tess_filenames(tic, minsector=1, maxsector=55, max_retries=3):
+def get_tess_filenames(tic, minsector=1, maxsector=55, max_retries=3, verb=False):
     """Retrive files associated with a specific TIC between minsector and 
     maxsector. This function will only retrieve the filenames of lightcurves
     with a two minute cadence hosted at:
@@ -152,6 +193,9 @@ def get_tess_filenames(tic, minsector=1, maxsector=55, max_retries=3):
     """
     filenames = []
     url_base = 'https://archive.stsci.edu/missions/tess/tid/'
+
+    if verb:
+        print("Retrieving TESS Filenames")
     
     # TIC is formatted into the URL in four-character chuncks
     tic_str = '{:016d}'.format(int(tic))
@@ -187,3 +231,9 @@ def get_tess_filenames(tic, minsector=1, maxsector=55, max_retries=3):
     return filenames
 
 
+def make_archivedirs(tic, archivedir):
+    for directory in [f"{archivedir}", f"{archivedir}/{tic}/"]:
+        # See if the data has been saved before
+        if not os.path.isdir(directory):
+            # Make the directory
+            os.mkdir(directory)

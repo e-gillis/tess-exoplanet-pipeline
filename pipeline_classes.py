@@ -98,7 +98,7 @@ class TransitSearch:
         
         # Star Parameters
         Teff, logg, radius, radius_err,\
-        mass, mass_err, RA, Dec = gtd.get_star_info(tic)
+        mass, mass_err, RA, Dec = gtd.get_star_info(tic, ARCHIVEDIR)
         
         assert not (np.isnan(radius) and np.isnan(mass)),\
         "Radius and Mass cannot both be NaN, catalog query failed"
@@ -709,7 +709,7 @@ class TIC_LightCurve(LightCurve):
     def __init__(self, tic):
                 
         # Make sure get tess data 
-        lc_params = gtd.get_tess_data(tic)
+        lc_params = gtd.get_tess_data(tic, archivedir=ARCHIVEDIR)
         bjd, fnorm, efnorm, sectors, qual_flags, texp = lc_params
         
         LightCurve.__init__(self, bjd, fnorm, efnorm, sectors, 
