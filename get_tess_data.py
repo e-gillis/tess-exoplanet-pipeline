@@ -105,7 +105,7 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True
                 hdus.writeto(f"{archivedir}/{tic}/{fstr}")
             
         # Get all the filenames
-        filenames = glob(f"{archivedir}/{tic}/*.fits")
+        filenames = sorted(glob(f"{archivedir}/{tic}/*.fits"))
 
     else:
         # Get all the filenames

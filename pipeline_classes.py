@@ -497,10 +497,10 @@ class LightCurve:
         # Check for rotation, if detected try GP
         if not split:
             gaussian_detrended = False      
-            try:
-                gaussian_detrended = self.gaussian_detrend_lc()
-            except:
-                pass
+            # try:
+            gaussian_detrended = self.gaussian_detrend_lc()
+            # except:
+                # pass
 
             # Do it again if there's residual rotation
             if not gaussian_detrended:
@@ -537,6 +537,15 @@ class LightCurve:
 
         # Mask flares with noise:
         flare_mask = dt.mask_flares(self.fnorm_detrend, self.bjd, width=100)
+        
+        # Do not mask points who are 2 sigma below outliers in the original lc
+        mad = np.median(np.abs(self.fnorm-np.median(self.fnorm)))
+        lsigma_mask = self.fnorm < (np.median(self.fnorm) - 3*mad)
+        # Spread lsigma mask out a bit
+        lsigma_mask = np.convolve(lsigma_mask, np.ones(10), mode='same') > 1
+        
+        flare_mask = flare_mask | lsigma_mask
+        
         self.fnorm_detrend[~flare_mask] = np.random.normal(loc=1, 
                                           scale=np.std(self.fnorm_detrend[flare_mask]),
                                           size=sum(~flare_mask))   
@@ -554,7 +563,6 @@ class LightCurve:
     def mask_flares(self, n, nsigma, method='noise'):
         assert method in ["noise", "remove"],\
                "method argument must be 'noise' or 'remove'"
-        
         # Split based on sector for more uniform noise properties
         fnorms = self.get_splits([self.fnorm_detrend], 
                                  consecutive_sectors=False)[0]
@@ -562,7 +570,10 @@ class LightCurve:
             np.random.seed(42)
             for i in range(len(fnorms)):
                 fnorm = fnorms[i]
+                
                 f_mask = dt.flare_mask(fnorm, n, nsigma)
+                
+                
                 fnorm[f_mask] = np.random.normal(loc=np.mean(fnorm[~f_mask]),
                                                  scale=np.std(fnorm[~f_mask]))
                 fnorms[i] = fnorm

@@ -25,10 +25,9 @@ def gaussian_detrend(bjd, fnorm, efnorm):
             map_soln = build_model_RotationTerm(bjd, fnorm_detrend, efnorm, Prot)
             fnorm_detrend -= map_soln["pred"]/1000
             
-            residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, 
-                                                     efnorm, verb=True)
+            residual_rotation_n, Prot_n = rotation_check(bjd, fnorm_detrend, 
+                                                         efnorm, verb=True)
             count += 1
-        
         detrended = True
         
     else:
@@ -195,6 +194,7 @@ def build_model_RotationTerm_exoplanet(bjd, fnorm, efnorm, Prot):
     return map_soln
 
 
+# Notes, having log_jitter in the diag makes it even easier for the GP to explore transits
 def build_model_RotationTerm(bjd, fnorm, efnorm, Prot):
     fnorm = (fnorm - 1)*1000
     efnorm = efnorm*1000
@@ -202,6 +202,9 @@ def build_model_RotationTerm(bjd, fnorm, efnorm, Prot):
     with pm.Model() as model:
         # The mean flux of the time series
         mean = pm.Normal("mean", mu=0.0, sigma=10.0)
+        
+        # Term to describe the excess white noise
+        log_jitter = pm.Uniform("log_jitter", lower=-3, upper=2)
         
         # Spread of initial Data
         log_sigma_gp = pm.Uniform("log_sigma_gp", lower=-3, 
@@ -215,10 +218,11 @@ def build_model_RotationTerm(bjd, fnorm, efnorm, Prot):
         
         # Quality Parameters for the oscillators
         Q0 = pm.Normal("Q0", mu=7.5, sigma=2) 
-        # log_Q0 = pm.Normal("log_Q0", mu=0, sigma=2)
-        log_dQ = pm.Normal("log_dQ", mu=0, sigma=2.0)
+        
+        # Q0 = pm.Normal("Q0", mu=5, sigma=2) 
+        log_dQ = pm.Normal("log_dQ", mu=0, sigma=1)
+        
         f = pm.Uniform("f", lower=0.8, upper=1)
-
         
         # Make the kernel
         kernel = terms.RotationTerm(sigma=tt.exp(log_sigma_gp),
@@ -227,7 +231,13 @@ def build_model_RotationTerm(bjd, fnorm, efnorm, Prot):
                                     dQ=tt.exp(log_dQ),
                                     f=f)
 
-        gp = GaussianProcess(kernel, t=bjd, yerr=tt.exp(log_sigma_lc))
+        gp = GaussianProcess(kernel, 
+                             t=bjd, 
+                             yerr=tt.exp(log_sigma_lc),
+                             # diag = efnorm**2 + tt.exp(2*log_jitter),
+                             # mean=mean
+                             )
+        
         gp.marginal("gp", observed=fnorm)
         pm.Deterministic("pred", gp.predict(fnorm))
         
@@ -350,6 +360,7 @@ def get_sdiff(series, bs=1000):
 
     return S0_diff, sum(S_diffs >= S0_diff) / bs
 
+
 # Recursion Error in this code
 def get_changepoints(series):
     """Recursively split a series to find changepoints in a series until no 
@@ -367,8 +378,7 @@ def get_changepoints(series):
     elif confidence < 0.1:
         # Recurse somehow?
         return get_changepoints(series[:pt]) + get_changepoints(series[pt:])
-        # return get_changepoints(series[:pt]) + [np.array([series[pt]])] +\
-               # get_changepoints(series[pt+1:])
+
     else:
         return [series]
 
@@ -405,6 +415,7 @@ def mask_flares(fnorm, bjd, width=20):
     """Mask flares by looking at where changepoints have been normalized to the mean
     """
     full_flares = full_flare_mask(fnorm, width)
+    
     change_indeces = []
     if full_flares[0]:
         change_indeces.append(0)

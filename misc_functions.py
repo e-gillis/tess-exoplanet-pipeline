@@ -122,7 +122,7 @@ def plot_result(result, savefig=None, show=True, fig=None, ax=None,
     if fig is None or ax is None:
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6,3))
     
-    plt.axline((0, 6),(1, 6))
+    ax.axline((0, 6),(1, 6))
     ax.set_xlim(min(result.periods), max(result.periods))
     ax.plot(result.periods, result.power, color='black', lw=0.5)
     for n in range(1, 20):
