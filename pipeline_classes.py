@@ -655,6 +655,34 @@ class LightCurve:
         if show:
             plt.show()
 
+
+    def plot_detrending(self, savefig=None, show=True, tlw=2):
+        bjd_range = self.bjd[-1]-self.bjd[0]
+        fig, axs = plt.subplots(2, 1, figsize=(6*bjd_range/28, 6))
+
+        axs[0].scatter(self.bjd, self.fnorm, s=0.1)
+        axs[1].scatter(self.bjd, self.fnorm_detrend,  s=0.1)
+
+        axs[0].set_xlim(self.bjd[0], self.bjd[-1])
+        axs[1].set_xlim(self.bjd[0], self.bjd[-1])
+
+        big_gaps = (self.bjd[1:] - self.bjd[:-1]) > 0.1
+        big_gaps = np.concatenate((big_gaps, np.array([False])))
+        nantrend = np.copy(self.trend)
+        nantrend[big_gaps] = np.ones(sum(big_gaps))*np.nan
+        
+        axs[0].plot(self.bjd, (nantrend+1), color='k', lw=tlw)
+        axs[0].set_ylabel("Normalized Flux")
+        axs[1].set_ylabel("Detrended")
+        axs[1].set_xlabel("BJD")
+
+
+        if savefig is not None:
+            plt.savefig(savefig, bbox_inches='tight', dpi=400)
+        
+        if show:
+            plt.show()
+        
     
     
     def plot_results(self, results, fnorm_range=None, show=True, savefig=None):
