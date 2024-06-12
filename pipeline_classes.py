@@ -501,10 +501,11 @@ class LightCurve:
             gaussian_detrended = self.gaussian_detrend_lc()
             # except:
                 # pass
-
+                
             # Do it again if there's residual rotation
-            if not gaussian_detrended:
-                self.gaussian_detrend_lc(cont=True)
+            # I already have this catch in the gaussian detrend function
+            # if not gaussian_detrended:
+            #     self.gaussian_detrend_lc(cont=True)
 
             median_detrended = self.median_detrend_lc(cont=True)
 

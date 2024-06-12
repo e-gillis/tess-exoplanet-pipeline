@@ -25,8 +25,8 @@ def gaussian_detrend(bjd, fnorm, efnorm):
             map_soln = build_model_RotationTerm(bjd, fnorm_detrend, efnorm, Prot)
             fnorm_detrend -= map_soln["pred"]/1000
             
-            residual_rotation_n, Prot_n = rotation_check(bjd, fnorm_detrend, 
-                                                         efnorm, verb=True)
+            residual_rotation, Prot = rotation_check(bjd, fnorm_detrend, 
+                                                     efnorm, verb=True)
             count += 1
         detrended = True
         
