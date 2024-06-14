@@ -1472,7 +1472,8 @@ class InjecrecTS(TransitSearch):
         for pc in pcs:
             period_ratio = max(pc.period / self.injected[1], 
                                self.injected[1] / pc.period)
-            if math.isclose(period_ratio, round(period_ratio), rel_tol=tolerance) and (period_ratio < 6):
+            if math.isclose(period_ratio, round(period_ratio), rel_tol=tolerance)\
+               and (period_ratio < 6):
                 found = True
                 found_params = np.array([pc.T0, pc.period, pc.Rp, pc.b, pc.offset])
                 
