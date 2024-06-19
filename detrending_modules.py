@@ -66,7 +66,8 @@ def spline_detrend(bjd, fnorm, efnorm, iterative=False):
 
 ### Helper Functions ###
 
-def rotation_check(bjd, fnorm, efnorm, bin_length=0.05, verb=False):
+def rotation_check(bjd, fnorm, efnorm, bin_length=0.05, verb=False, 
+                   return_dbic=False, ampcheck=True):
     # Bin the lightcurve with 20 bins per day
     bbjd, bfnorm, befnorm = misc.bin_curve(bjd, fnorm, efnorm, 
                                            even_bins=True, bin_length=bin_length)
@@ -86,10 +87,16 @@ def rotation_check(bjd, fnorm, efnorm, bin_length=0.05, verb=False):
     dBIC = misc.DeltaBIC(bfnorm, befnorm, model, model_null, k=4)
     rotation = dBIC <= -50 and FAP < 0.01
     
+    if ampcheck and Prot < 1:
+        mednoise = np.median(efnorm)
+        rotation = rotation and amp > mednoise
+    
     if verb:
         print(f"Delta BIC: {dBIC},",
               f"{['no', f'{Prot} day'][rotation]} Rotation Detected")
     
+    if return_dbic:
+        return rotation, Prot, dBIC
     return rotation, Prot
 
 

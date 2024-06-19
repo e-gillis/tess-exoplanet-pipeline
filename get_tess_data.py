@@ -59,7 +59,7 @@ def get_star_info(tic, archivedir=None):
 
 
 def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True, 
-                  archivedir=None):
+                  archivedir=None, verb=True):
     """Return TESS timeseries arrays based on the tic
     
     === Arguments ===
@@ -95,7 +95,7 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True
         if len(glob(f"{archivedir}/{tic}/*.fits")) == 0:
             # Get all the filenames
             filenames = get_tess_filenames(tic, minsector=minsector, 
-                                           maxsector=maxsector, verb=True)
+                                           maxsector=maxsector, verb=verb)
 
             # Make a directory for the files
             for file in filenames:
@@ -110,7 +110,7 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True
     else:
         # Get all the filenames
         filenames = get_tess_filenames(tic, minsector=minsector, 
-                                       maxsector=maxsector, verb=True)
+                                       maxsector=maxsector, verb=verb)
     
     # Download data
     for file in filenames:
