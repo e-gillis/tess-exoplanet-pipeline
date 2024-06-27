@@ -5,7 +5,6 @@ from astroquery.mast import Catalogs, Observations
 from astropy.table import Table
 import detrending_modules as dt
 from glob import glob
-import lightkurve as lk
 
 from misc_functions import *
 

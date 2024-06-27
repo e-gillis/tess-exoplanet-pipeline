@@ -464,7 +464,8 @@ class LightCurve:
         self.trend = None
         
     
-    def get_splits(self, series, split_bjd=False, consecutive_sectors=True):
+    def get_splits(self, series, split_bjd=False, consecutive_sectors=True, 
+                   max_sectors=4):
         # Return each dataset in series split up by sectors
         bjd_diff = self.bjd[1:] - self.bjd[:-1]
         sector_diff = np.abs(self.sectors[1:] - self.sectors[:-1])
@@ -480,10 +481,29 @@ class LightCurve:
             jump_indeces = np.union1d(bjd_jumps, sector_jumps) + 1
         else:
             jump_indeces = sector_jumps + 1
-            
-        jump_indeces = np.append(np.array(0), np.append(jump_indeces, 
-                                 np.array(len(self.bjd))))
 
+        # Stop after a certain number of sectors
+        jump_indeces = list(jump_indeces)
+        sectors = np.unique(self.sectors)
+        scuts = []
+        ccount = 1
+        for i in range(1, len(sectors)):
+            if sectors[i] == sectors[i-1]+1:
+                ccount += 1
+            else:
+                ccount = 1
+            if ccount > max_sectors:
+                scuts.append(sectors[i])
+                ccount = 1
+
+        for s in scuts:
+            jump_indeces.append((np.arange(len(self.sectors))[self.sectors==s])[0])
+
+        jump_indeces.extend([0, len(self.bjd)])
+        # jump_indeces = np.append(np.array(0), np.append(jump_indeces, 
+        #                          np.array(len(self.bjd))))
+        jump_indeces = np.array(jump_indeces, dtype=int)
+        jump_indeces = np.sort(jump_indeces)
         cut_series = [[] for i in range(len(series))]
 
         for i in range(len(jump_indeces)-1):
@@ -491,6 +511,7 @@ class LightCurve:
                 cut_series[j].append(series[j][jump_indeces[i]:jump_indeces[i+1]])
 
         return cut_series
+        
     
     ### Need to work on the detrending routines
     def detrend_lc(self, split=False):
