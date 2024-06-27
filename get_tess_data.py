@@ -1,13 +1,39 @@
 import numpy as np
 import requests, re, os, time
 from astropy.io import fits
-from astroquery.mast import Catalogs
+from astroquery.mast import Catalogs, Observations
 from astropy.table import Table
 import detrending_modules as dt
 from glob import glob
-
+import lightkurve as lk
 
 from misc_functions import *
+
+
+def get_tess_sectors(TIC):
+    """
+    Using MAST, get the sectors for 2 minute cadence TESS Lightcurves
+    """
+    query_criteria = {"project": 'TESS', "t_exptime": [110, 130], 
+                      "provenance_name": "SPOC"}
+    observation = Observations.query_criteria(target_name=str(TIC), **query_criteria)   
+    
+    sectors = []
+    for i in range(len(observation)):
+        row = observation[i]
+        if len(row["obs_id"].split("-"))==5 and row["dataURL"][-9:]=='s_lc.fits' and\
+           (row["sequence_number"] not in sectors):
+            sectors.append(row["sequence_number"])
+    sectors.sort()
+    
+    # Copied from lightkurve
+    # target_lower = f'tic {TIC}'
+    # tess_match = re.match(r"^(tess|tic) ?(\d+)$", target_lower)
+    # exact_target_name = f"{tess_match.group(2).zfill(9)}"
+    # print(exact_target_name)
+    
+    return sectors
+
 
 
 def get_star_info(tic, archivedir=None):
@@ -170,7 +196,7 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True
     return bjd, fnorm, efnorm, sectors, qual_flags, texps
     
 
-def get_tess_filenames(tic, minsector=1, maxsector=55, max_retries=3, verb=False):
+def get_tess_filenames(tic, minsector=1, maxsector=80, max_retries=3, verb=False):
     """Retrive files associated with a specific TIC between minsector and 
     maxsector. This function will only retrieve the filenames of lightcurves
     with a two minute cadence hosted at:
@@ -202,8 +228,12 @@ def get_tess_filenames(tic, minsector=1, maxsector=55, max_retries=3, verb=False
     tic_list = [tic_str[:4], tic_str[4:8], tic_str[8:12], tic_str[12:]]
     dir_str = ("{}/"*4).format(*tic_list)
     
+    tess_sectors = np.array(get_tess_sectors(tic))
+    tess_sectors = tess_sectors[(tess_sectors >= minsector) &\
+                                (tess_sectors <= maxsector)]
+    
     # Go through all the sectors and see if the data is there
-    for j in range(minsector, maxsector+1):
+    for j in tess_sectors:
         sector = f"s{j:04}/"
 
         retry_count = 0

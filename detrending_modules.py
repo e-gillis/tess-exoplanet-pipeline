@@ -87,9 +87,9 @@ def rotation_check(bjd, fnorm, efnorm, bin_length=0.05, verb=False,
     dBIC = misc.DeltaBIC(bfnorm, befnorm, model, model_null, k=4)
     rotation = dBIC <= -50 and FAP < 0.01
     
-    if ampcheck and Prot < 1:
+    if ampcheck and Prot > 1:
         mednoise = np.median(efnorm)
-        rotation = rotation and amp > mednoise
+        rotation = rotation and (gls.best['amp'] > mednoise)
     
     if verb:
         print(f"Delta BIC: {dBIC},",
