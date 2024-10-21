@@ -12,6 +12,8 @@ from multiprocessing import Pool
 from transitleastsquares import tls_constants, catalog_info, period_grid
 from transitleastsquares import transitleastsquares, transit_mask
 tls_constants.MINIMUM_PERIOD_GRID_SIZE = 2
+tls_constants.R_STAR_MIN = 0.05
+tls_constants.M_STAR_MIN = 0.05
 
 from exofop.download.identifiers import TIC
 import math
@@ -69,6 +71,9 @@ class TransitSearch:
         List of planet candidates which have been rejected
     planet_candidates_plausible: List[PlanetCandidates]
         List of plausible but poor fitting planet candidates for manual review
+
+    manual_check: bool
+        If the transit search has been manually vetted this will be set to True
     
     lcs, pcs, pcs_r, pcs_p:
         Aliases for lightcurves, planet_candidates, planet_candidates_reject
@@ -115,6 +120,7 @@ class TransitSearch:
         self.RA = RA
         self.Dec = Dec
         self.u = u
+        self.manual_check = False
         
         # Check For NaNs
         if np.isnan(self.mass_err):
@@ -770,7 +776,7 @@ class TIC_LightCurve(LightCurve):
     def __init__(self, tic):
                 
         # Make sure get tess data 
-        lc_params = gtd.get_tess_data(tic, archivedir=ARCHIVEDIR)
+        lc_params = gtd.get_tess_data(tic, archivedir=ARCHIVEDIR, maxsector=MAX_SECTOR)
         bjd, fnorm, efnorm, sectors, qual_flags, texp = lc_params
         
         LightCurve.__init__(self, bjd, fnorm, efnorm, sectors, 
@@ -1170,7 +1176,7 @@ class PlanetCandidate:
             plt.show()
             
     
-    def highlight_transits(self, title=None, show=True, savefig=None):
+    def highlight_transits(self, title=None, label_sectors=True, show=True, savefig=None):
         """
         Plot the timeseries from each lightcurve and highlight transits in
         the timeseries based on the characterized parameters. 
@@ -1191,6 +1197,9 @@ class PlanetCandidate:
                                 squeeze=False)
     
         for i, lc in enumerate(self.ts.lightcurves):
+            if label_sectors:
+                sectors = np.unique(lc.sectors)
+                axs[0][i].set_title(f"Sectors: {str(list(sectors))[1:-1]}")
     
             # Plot detrended lightcurves with intransit points orange        
             axs[1][i].scatter(lc.bjd, lc.fnorm_detrend, color="tab:blue", 
@@ -1546,6 +1555,18 @@ class InjecrecTS(TransitSearch):
         """
         if remove_data:
             self.lightcurves = []
+            self.planet_candidates = []
+            self.planet_candidates_reject = []
+            self.planet_candidates_plausible = []
+            self.results = None
+            self.result_tags = None
+            
+            self.injected = np.nan*np.ones(5)
+
+            # Set Aliases
+            self.lcs, self.pcs, self.pcs_r, self.pcs_p =\
+            self.lightcurves, self.planet_candidates,\
+            self.planet_candidates_reject, self.planet_candidates_plausible
     
         with open(filename+'.ts', "wb") as f:
             pickle.dump(self, f)
@@ -1575,6 +1596,6 @@ class InjecrecTSUpdate(TransitSearchUpdate, InjecrecTS):
         # List of (T0, P, Rp, b)
         self.injected = np.zeros(5)*np.nan
         # recovery dictionary
-        self.recovery_dict = {}
+        # self.recovery_dict = {}
 
                 

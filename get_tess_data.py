@@ -83,7 +83,7 @@ def get_star_info(tic, archivedir=None):
     return Teff, logg, radius, radius_err, mass, mass_err, RA, Dec
 
 
-def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True, 
+def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=86, sigclip=True, 
                   archivedir=None, verb=True):
     """Return TESS timeseries arrays based on the tic
     
@@ -127,7 +127,7 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True
                 # Save the files
                 hdus = fits.open(file)
                 fstr = file.split("/")[-1]
-                hdus.writeto(f"{archivedir}/{tic}/{fstr}")
+                hdus.writeto(f"{archivedir}/{tic}/{fstr}", overwrite=True)
             
         # Get all the filenames
         filenames = sorted(glob(f"{archivedir}/{tic}/*.fits"))
@@ -195,7 +195,7 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=65, sigclip=True
     return bjd, fnorm, efnorm, sectors, qual_flags, texps
     
 
-def get_tess_filenames(tic, minsector=1, maxsector=80, max_retries=3, verb=False):
+def get_tess_filenames(tic, minsector=1, maxsector=86, max_retries=3, verb=False):
     """Retrive files associated with a specific TIC between minsector and 
     maxsector. This function will only retrieve the filenames of lightcurves
     with a two minute cadence hosted at:

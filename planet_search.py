@@ -6,6 +6,9 @@ from constants import TLS_THREADS
 
 from transitleastsquares import transitleastsquares, transit_mask
 from transitleastsquares import catalog_info
+from transitleastsquares import tls_constants
+tls_constants.R_STAR_MIN = 0.05
+tls_constants.M_STAR_MIN = 0.05
 
 def find_transits(bjd, fnorm, efnorm, star_params, threshold=6, max_iterations=4,
                   grazing_search=True, threads=1, method='noise', **tls_kwargs):

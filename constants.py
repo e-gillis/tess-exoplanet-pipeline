@@ -10,7 +10,7 @@ MASK_METHOD = 'model' # Choose between 'remove', 'noise' and 'model'
 ARCHIVEDIR = "tess_fits"
 
 # FINDING LIGHTCURVES
-MAX_SECTOR = 65
+MAX_SECTOR = 86
 
 # VETTING CUTOFFS
 SNR_VET = 3

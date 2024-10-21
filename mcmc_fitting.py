@@ -204,13 +204,17 @@ def plot_chain_dists(chain, priors, title=None, savefig=None, show=True):
         plt.show()
         
 
-def plot_model(pc, ts, savefig=None, show=False, title=None, depthnorm=None):
+def plot_model(pc, ts, savefig=None, show=False, title=None, depthnorm=None, 
+               use_fnorm=False):
     
     chain = pc.mcmc_chain
     plt.figure(figsize=(12,4))
     bjd, fnorm, efnorm = np.concatenate([lc.bjd for lc in ts.lightcurves]),\
                 np.concatenate([lc.fnorm_detrend for lc in ts.lightcurves]),\
                 np.concatenate([lc.efnorm for lc in ts.lightcurves])
+
+    if use_fnorm:
+        fnorm = np.concatenate([lc.fnorm for lc in ts.lightcurves])
     
     R, M, u = ts.radius, ts.mass, ts.u
     T0, P, Rp, b, offset = np.median(chain, axis=0)
