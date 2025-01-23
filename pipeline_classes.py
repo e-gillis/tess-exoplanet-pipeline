@@ -701,7 +701,7 @@ class LightCurve:
 
         axs[0].scatter(self.bjd, self.fnorm, s=0.1)
         axs[1].scatter(self.bjd, self.fnorm_detrend,  s=0.1)
-
+        
         axs[0].set_xlim(self.bjd[0], self.bjd[-1])
         axs[1].set_xlim(self.bjd[0], self.bjd[-1])
 
@@ -968,7 +968,6 @@ class PlanetCandidate:
         # Get the noise
         binned_fnorm = misc.bin_curve(bjd, fnorm, efnorm, even_bins=True, 
                                       bin_length=self.duration)[1]
-        noise = np.std(binned_fnorm)
         self.snr = depth / noise * N**0.5
     
     
@@ -1270,7 +1269,7 @@ class PlanetCandidate:
                 return None
         
         mc.plot_model(self, self.ts, savefig=savefig, show=show, title=title,
-                     depthnorm=depthnorm)
+                      depthnorm=depthnorm)
     
     def corner_plot(self, savefig=None, show=True, title=None):
         if self.mcmc_chain is None:

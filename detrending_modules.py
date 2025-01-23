@@ -418,6 +418,7 @@ def full_flare_mask(fnorm, width=20):
     flare_conv = np.convolve(flare_outliers, np.ones(width), mode='same')
     return flare_conv > 0
 
+
 def mask_flares(fnorm, bjd, width=20):
     """Mask flares by looking at where changepoints have been normalized to the mean
     """

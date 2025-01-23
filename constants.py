@@ -3,7 +3,7 @@
 SDE_CUTOFF = 6
 MAX_PERIOD = 30
 MIN_PERIOD = 0.1
-TLS_THREADS = 32
+TLS_THREADS = 8
 MASK_METHOD = 'model' # Choose between 'remove', 'noise' and 'model'
 
 # ARCHIVE?

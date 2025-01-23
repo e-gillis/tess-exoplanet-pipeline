@@ -108,55 +108,55 @@ def ps_mcmc_prep(pc, ts, nwalkers, mask_others):
 
 ### Plotting Functions ###
 
-def plot_chain_dists(chain, priors, savefig=None, square=True, 
-                     T0_offset=True, show=False, title=None):
+# def plot_chain_dists(chain, priors, savefig=None, square=True, 
+#                      T0_offset=True, show=False, title=None):
     
-    titles = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter", "Offset"]
+#     titles = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter", "Offset"]
 
-    if T0_offset:
-        T0_m = int(np.mean(chain[:,0]))
-        offset = np.zeros(chain.shape)
-        offset[:,0] += np.ones(len(offset[:,0])) * T0_m
-        chain = chain - offset
-        titles = titles.copy()
-        titles[0] += f"+{T0_m}"
-    else:
-        T0_m = 0
+#     if T0_offset:
+#         T0_m = int(np.mean(chain[:,0]))
+#         offset = np.zeros(chain.shape)
+#         offset[:,0] += np.ones(len(offset[:,0])) * T0_m
+#         chain = chain - offset
+#         titles = titles.copy()
+#         titles[0] += f"+{T0_m}"
+#     else:
+#         T0_m = 0
 
-    fig, axs = plt.subplots(1, len(priors), figsize=(4*len(priors), 4))
-    fig.subplots_adjust(wspace=0.03)
+#     fig, axs = plt.subplots(1, len(priors), figsize=(4*len(priors), 4))
+#     fig.subplots_adjust(wspace=0.03)
     
-    for i in range(len(axs)):
-        ext = max(chain[:,i]) - min(chain[:,i])
-        x = np.linspace(min(chain[:,i])-ext/10, 
-                        ext/10+max(chain[:,i]), num=200)
-        if i == 0:
-            pdf = priors[i].pdf(x + T0_m)
-        else:
-            pdf = priors[i].pdf(x)
+#     for i in range(len(axs)):
+#         ext = max(chain[:,i]) - min(chain[:,i])
+#         x = np.linspace(min(chain[:,i])-ext/10, 
+#                         ext/10+max(chain[:,i]), num=200)
+#         if i == 0:
+#             pdf = priors[i].pdf(x + T0_m)
+#         else:
+#             pdf = priors[i].pdf(x)
         
-        n,_,_=axs[i].hist(chain[:,i], density=True, bins=100)
-        axs[i].plot(x,max(n)/max(pdf)*pdf/2, ls='--', alpha=0.7)
-        axs[i].set_title(titles[i])
-        axs[i].set_xticks(axs[i].get_xticks(), axs[i].get_xticklabels(), 
-                          rotation=45, ha='right')              
-        axs[i].set_xlim(min(x), max(x))
-        axs[i].set_yticks([])
+#         n,_,_=axs[i].hist(chain[:,i], density=True, bins=50)
+#         axs[i].plot(x,max(n)/max(pdf)*pdf/2, ls='--', alpha=0.7)
+#         axs[i].set_title(titles[i])
+#         axs[i].set_xticks(axs[i].get_xticks(), axs[i].get_xticklabels(), 
+#                           rotation=45, ha='right')              
+#         axs[i].set_xlim(min(x), max(x))
+#         axs[i].set_yticks([])
     
-    if title:
-        plt.title(title)
+#     if title:
+#         plt.title(title)
     
-    if savefig:
-        plt.savefig(savefig, bbox_inches='tight')
-    if show:
-        plt.show()
+#     if savefig:
+#         plt.savefig(savefig, bbox_inches='tight')
+#     if show:
+#         plt.show()
     
     
     
 def plot_chain_corner(chain, savefig=None, show=False, title=None):
     
-    labels = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter", "Offset"]
-    figure = corner.corner(chain, labels=labels)
+    labels = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter"]#, "Offset"]
+    figure = corner.corner(chain[:,0:-1], labels=labels)
     
     if title:
         plt.title(title)
@@ -178,7 +178,7 @@ def plot_chain_dists(chain, priors, title=None, savefig=None, show=True):
     for j in range(len(priors)):
 
         x = np.linspace(intervals[j][0], intervals[j][1], num=200)
-        bins = np.linspace(intervals[j][0], intervals[j][1], num=31)
+        bins = np.linspace(intervals[j][0], intervals[j][1], num=11)
         pdf = priors[j].pdf(x)
 
         n,_,_=axs[j].hist(chain[:,j], density=True, bins=bins, 
