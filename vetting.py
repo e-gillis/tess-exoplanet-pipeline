@@ -109,13 +109,16 @@ def inf_period_uncertainty(results, tag=256):
     return tag*np.array(flag)
 
 
-def half_sectors_or_more(results_list, lc_lengths, tag=512):
+def half_sectors_or_more(results_list, lc_lengths, nsectors, tag=512):
     """Given a full set of results, flag all signals that only appear in less
     than half of the lightcurves from a target
     
-    Results with a sufficiently high SDE will be excempt
+    Results with a sufficiently high SDE or with many sectors will be excempt
     """
     full_tags = [np.zeros(i) for i in [len(r) for r in results_list]]
+    
+    if nsectors >= 10:
+        return full_tags
     
     for i, results in enumerate(results_list):
         for j, r in enumerate(results):
