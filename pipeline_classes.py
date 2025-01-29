@@ -970,6 +970,7 @@ class PlanetCandidate:
         # Get the noise
         binned_fnorm = misc.bin_curve(bjd, fnorm, efnorm, even_bins=True, 
                                       bin_length=self.duration)[1]
+        noise = np.std(binned_fnorm)
         self.snr = depth / noise * N**0.5
     
     
