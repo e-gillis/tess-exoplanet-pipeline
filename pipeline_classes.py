@@ -226,7 +226,9 @@ class TransitSearch:
         # Check for results across different sectors
         lc_lengths = np.array([lc.bjd[-1]-lc.bjd[0] 
                                for lc in self.lightcurves])
-        sector_vet = vet.half_sectors_or_more(self.results, lc_lengths)
+        nsectors = len(np.unique(np.concatenate([lc.sectors for lc 
+                                                 in self.lightcurves])))
+        sector_vet = vet.half_sectors_or_more(self.results, lc_lengths, nsectors)
         
         for i in range(len(self.result_tags)):
             self.result_tags[i] += sector_vet[i]
