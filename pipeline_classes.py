@@ -259,7 +259,8 @@ class TransitSearch:
         return correlated_results
     
     
-    def get_planet_candidates(self, mask_planets=False, progress=True):
+    def get_planet_candidates(self, mask_planets=False, progress=True, 
+                              vet_results=True):
         """
         Find and characterize planet candidates from the set of TLS results.
         
@@ -272,7 +273,7 @@ class TransitSearch:
         self.clear_pcs()
         
         # Correlate Results
-        correlated_results = self.cc_results(vet_results=True)
+        correlated_results = self.cc_results(vet_results=vet_results)
         # planet_candidates = []
         # planet_candidates_reject = []
         
