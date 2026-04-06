@@ -57,8 +57,54 @@ def transit_log_prob(params, star_params, lc_arrays, param_priors, rand=True):
     return chi2 + prior_prob
 
 
+
+def transit_log_prob_ecc(params, star_params, lc_arrays, param_priors, rand=True):
+    
+    # Get probability of model
+    prior_probs = [param_priors[i].pdf(params[i]) for i in range(len(params))]
+    if 0 in prior_probs:
+        # print(prior_probs)
+        return -np.inf
+    
+    prior_prob = np.sum(np.log(np.array(prior_probs)))
+    
+    # Parameter Order
+    T0, P, Rp, b, offset, h, k = params
+    ecc, w = h**2 + k**2, np.arctan2(h, k)
+    bjd, fnorm, efnorm = lc_arrays
+    R, R_err, M, M_err, u = star_params
+    
+    if ecc >= 1:
+        return -np.inf
+    
+    # Fold Lightcurve, make sure this is working
+    bjd_folded = (bjd - T0 + P/2) % P - P/2
+    
+    # Could enforce all points at zero here
+    
+    # Sample a in units of R* Semimajor axis / R*
+    if rand:
+        R_star = np.random.normal(R, R_err)
+        M_star = np.random.normal(M, M_err)
+    else:
+        R_star = R
+        M_star = M
+        
+    light_curve = batman_model(bjd_folded, 0, P, Rp, b, R_star, M_star, 
+                               u, offset, ecc, w)
+    
+    # Compute Log Posterior probability
+    chi2 = -0.5 * sum((light_curve -  fnorm)**2 / efnorm**2)
+    
+    # Good up to an additive constant
+    # print(chi2, prior_prob)
+    
+    return chi2 + prior_prob
+
+
+
 ### MCMC Prep Function ##
-def ps_mcmc_prep(pc, ts, nwalkers, mask_others):
+def ps_mcmc_prep(pc, ts, nwalkers, mask_others, model_ecc=False):
     best_result = pc.best_result
     
     P, P_sigma = best_result.period, best_result.period_uncertainty
@@ -98,7 +144,14 @@ def ps_mcmc_prep(pc, ts, nwalkers, mask_others):
     print(Rp, Rp_sigma)
     Rp_dist = norm(Rp, Rp_sigma)
     
-    walker_samplers = [T0_model, P_model, Rp_dist, b_model, offset_model]
+    walker_samplers = [T0_model, P_model, Rp_dist, b_model, offset_model]  
+    
+    # Adding Eccentricity and w priors/walkers
+    if model_ecc:
+        ew_sampler = uniform(-0.5**0.5, 2*0.5**0.5)
+        priors.extend([ew_sampler, ew_sampler])
+        walker_samplers.extend([ew_sampler, ew_sampler])
+    
     walker_pos = [sampler.rvs(size=nwalkers) for sampler in walker_samplers]
     walkers = np.array(walker_pos).T
     
@@ -171,7 +224,8 @@ def plot_chain_corner(chain, savefig=None, show=False, title=None):
 def plot_chain_dists(chain, priors, title=None, savefig=None, show=True):
     
     fig, axs = plt.subplots(1, len(priors), figsize=(16, 4))
-    labels = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter", "Offset"]
+    plt.subplots_adjust(wspace=0.1)
+    labels = [r"T$_0$ (BJD)",r"Period (Days)", r"R$_p$/R$_*$",r"Impact Parameter", "Flux Offset"]
     intervals = confidence_interval(chain, 0.90)
     conf = confidence_interval(chain, 0.68) 
 
@@ -191,7 +245,7 @@ def plot_chain_dists(chain, priors, title=None, savefig=None, show=True):
         axs[j].set_ylim(0, max(n)*1.1)
         axs[j].set_xlim(intervals[j][0], intervals[j][1])
 
-        axs[j].set_title(labels[j])
+        axs[j].set_xlabel(labels[j], labelpad=[20, 4][j>=2])
         axs[j].fill_between(x=conf[j], y1=[0, 0], y2=[max(n)*1.2, max(n)*1.2], 
                             color=mac_orange, alpha=0.5)
 
@@ -205,10 +259,10 @@ def plot_chain_dists(chain, priors, title=None, savefig=None, show=True):
         
 
 def plot_model(pc, ts, savefig=None, show=False, title=None, depthnorm=None, 
-               use_fnorm=False):
+               use_fnorm=False, figsize=(12,4)):
     
     chain = pc.mcmc_chain
-    plt.figure(figsize=(12,4))
+    plt.figure(figsize=figsize)
     bjd, fnorm, efnorm = np.concatenate([lc.bjd for lc in ts.lightcurves]),\
                 np.concatenate([lc.fnorm_detrend for lc in ts.lightcurves]),\
                 np.concatenate([lc.efnorm for lc in ts.lightcurves])

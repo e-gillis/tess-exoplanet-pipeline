@@ -3,14 +3,14 @@
 SDE_CUTOFF = 6
 MAX_PERIOD = 30
 MIN_PERIOD = 0.1
-TLS_THREADS = 32
+TLS_THREADS = 1
 MASK_METHOD = 'model' # Choose between 'remove', 'noise' and 'model'
 
 # ARCHIVE?
 ARCHIVEDIR = "tess_fits"
 
 # FINDING LIGHTCURVES
-MAX_SECTOR = 86
+MAX_SECTOR = 150
 
 # VETTING CUTOFFS
 SNR_VET = 3

@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.ma as ma
 import pickle
 import time
 from inspect import ismethod
@@ -121,6 +122,7 @@ class TransitSearch:
         self.Dec = Dec
         self.u = u
         self.manual_check = False
+        self.flags = []
         
         # Check For NaNs
         if np.isnan(self.mass_err):
@@ -976,7 +978,7 @@ class PlanetCandidate:
     
     
     def run_mcmc(self, nsteps=4000, nwalkers=48, burn_in=2000, progress=True,
-                 mask_others=True):
+                 mask_others=True, custom_priors=None, model_ecc=False):
         """
         Run a Monte Carlo Markov Chain to characterize the posterior 
         distribution of planet parameters. self.fit_planet_params must be run
@@ -994,27 +996,31 @@ class PlanetCandidate:
         """
         # Prepare priors and walker positions
         priors, lc_arrays, walkers = mc.ps_mcmc_prep(self, self.ts, nwalkers,
-                                                     mask_others=mask_others)
+                                                     mask_others=mask_others,
+                                                     model_ecc=model_ecc)
         
         star_params = (self.ts.radius, self.ts.radius_err, 
                        self.ts.mass, self.ts.mass_err, self.ts.u)
+        if custom_priors is not None:
+            priors = custom_priors
         self.priors = priors
         
+        if model_ecc:
+            log_prob_func = mc.transit_log_prob_ecc
+        else:
+            log_prob_func = mc.transit_log_prob
+        
+            
         # Run the MCMC
         with Pool(TLS_THREADS) as pool:
-            ensam = emcee.EnsembleSampler(nwalkers, len(priors), mc.transit_log_prob,
-                                          pool=pool, args=(star_params,lc_arrays,priors))
+            ensam = emcee.EnsembleSampler(nwalkers, len(priors), log_prob_func,
+                                          pool=pool, args=(star_params, lc_arrays, priors))
             ensam.run_mcmc(walkers, nsteps=nsteps, progress=progress)
         
         # Save the chain
         self.full_mcmc_chain = ensam.get_chain()
         self.mcmc_chain = self.full_mcmc_chain[burn_in:].reshape((-1, len(priors)))
-        
-        # Update Parameters
-        # self.T0, self.P, self.Rp, self.b = np.median(self.mcmc_chain, axis=0)
-        # R, M = self.ts.radius, self.ts.mass
-        # self.duration = misc.transit_duration(M, R, self.period, 
-        #                                       self.Rp, self.b)    
+
 
     ### Statistical Test Methods ###
 
@@ -1192,6 +1198,7 @@ class PlanetCandidate:
         savefig: str or None
             If not None, path to save the plot at. Default: None
         """
+        bjds = 2457e3
         # This makes the figure as one column, remake to n columns
         fig, axs = plt.subplots(ncols=len(self.ts.lightcurves), nrows=2,
                                 figsize=(6*len(self.ts.lightcurves), 6),
@@ -1202,19 +1209,23 @@ class PlanetCandidate:
         for i, lc in enumerate(self.ts.lightcurves):
             if label_sectors:
                 sectors = np.unique(lc.sectors)
-                axs[0][i].set_title(f"Sectors: {str(list(sectors))[1:-1]}")
-    
+                # axs[0][i].set_title(f"Sectors: {str(list(sectors))[1:-1]}")
+                if len(sectors) == 1:
+                    axs[0][i].set_title(f"Sector: {str(list(sectors))[1:-1]}")
+                else:
+                    axs[0][i].set_title(f"Sectors: {str(list(sectors))[1:-1]}")
+                    
             # Plot detrended lightcurves with intransit points orange        
-            axs[1][i].scatter(lc.bjd, lc.fnorm_detrend, color="tab:blue", 
+            axs[1][i].scatter(lc.bjd-bjds, lc.fnorm_detrend, color="tab:blue", 
                               s=0.1, alpha=0.7)
             mask = transit_mask(lc.bjd, self.period, self.duration, self.T0)
             
-            axs[1][i].scatter(lc.bjd[mask], lc.fnorm_detrend[mask], 
+            axs[1][i].scatter(lc.bjd[mask]-bjds, lc.fnorm_detrend[mask], 
                            color="tab:orange", s=3)
     
             # Plot the lightcurve with trend overplotted and orange transits
             # highlighted orange
-            axs[0][i].scatter(lc.bjd, lc.fnorm, color="tab:blue", s=0.1, alpha=0.7)
+            axs[0][i].scatter(lc.bjd-bjds, lc.fnorm, color="tab:blue", s=0.1, alpha=0.7)
             
             big_gaps = (lc.bjd[1:] - lc.bjd[:-1]) > 0.1
             big_gaps = np.concatenate((big_gaps, np.array([False])))
@@ -1222,7 +1233,7 @@ class PlanetCandidate:
             nantrend = np.copy(lc.trend)
             nantrend[big_gaps] = np.ones(sum(big_gaps))*np.nan
             
-            axs[0][i].plot(lc.bjd, nantrend+1, color='k', lw=1)
+            axs[0][i].plot(lc.bjd-bjds, nantrend+1, color='k', lw=1)
     
             mask = mask.astype(int)
             transit_edges = abs(mask[1:] - mask[:-1]) > 1e-10
@@ -1230,15 +1241,14 @@ class PlanetCandidate:
             # Make sure the number of edges is even
             if sum(transit_edges) % 2 != 0:
                 continue
-            transit_bjds = (lc.bjd[transit_edges]).reshape(sum(transit_edges)//2, 2)
+            transit_bjds = (lc.bjd[transit_edges]).reshape(sum(transit_edges)//2, 2) - bjds
     
             
-            for bjds in transit_bjds:
-                axs[0][i].axvspan(bjds[0], bjds[1], color="tab:orange", alpha=0.5, 
-                                  zorder=-1)
+            for bjd_s in transit_bjds:
+                axs[0][i].axvspan(bjd_s[0], bjd_s[1], color="tab:orange", alpha=0.5, zorder=-1)
     
-            axs[-1][i].set_xlim(min(lc.bjd), max(lc.bjd))
-            axs[-1][i].set_xlabel("BJD")
+            axs[-1][i].set_xlim(min(lc.bjd-bjds), max(lc.bjd-bjds))
+            axs[-1][i].set_xlabel(f"BJD - {int(bjds)}")
     
         axs[0][0].set_ylabel("Normalized Flux")
         axs[1][0].set_ylabel("Detrended Flux")
@@ -1267,13 +1277,13 @@ class PlanetCandidate:
         mc.plot_chain_dists(self.mcmc_chain, self.priors, 
                             title=title, savefig=savefig, show=show)
         
-    def model_plot(self, savefig=None, show=True, title=None, depthnorm=None):
+    def model_plot(self, figsize=(12,4), savefig=None, show=True, title=None, depthnorm=None):
         if self.mcmc_chain is None:
                 print("run_mcmc method must be run first!")
                 return None
         
         mc.plot_model(self, self.ts, savefig=savefig, show=show, title=title,
-                      depthnorm=depthnorm)
+                      depthnorm=depthnorm, figsize=figsize)
     
     def corner_plot(self, savefig=None, show=True, title=None):
         if self.mcmc_chain is None:
@@ -1601,4 +1611,6 @@ class InjecrecTSUpdate(TransitSearchUpdate, InjecrecTS):
         # recovery dictionary
         # self.recovery_dict = {}
 
-                
+
+        
+

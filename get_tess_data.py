@@ -84,7 +84,7 @@ def get_star_info(tic, archivedir=None):
 
 
 def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=86, sigclip=True, 
-                  archivedir=None, verb=True):
+                  archivedir=None, verb=True, qual_cut=True):
     """Return TESS timeseries arrays based on the tic
     
     === Arguments ===
@@ -174,10 +174,11 @@ def get_tess_data(tic, minsector=1, mask_flares=True, maxsector=86, sigclip=True
 
     # Cut down the data        
     cut = np.ones(len(bjd), dtype=bool)
-    cut = cut & (qual_flags == 0)
     cut = cut & (np.isfinite(fnorm))
     cut = cut & (np.isfinite(efnorm)) 
     cut = cut & (np.isfinite(bjd))
+    if qual_cut:
+        cut = cut & (qual_flags == 0)
 
     bjd, fnorm, efnorm = bjd[cut], fnorm[cut], efnorm[cut], 
     sectors, qual_flags, texps = sectors[cut], qual_flags[cut], texps[cut]
