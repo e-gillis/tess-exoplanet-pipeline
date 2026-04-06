@@ -1,13 +1,15 @@
 import numpy as np
-import pymc3 as pm
-import pymc3_ext as pmx
-import aesara_theano_fallback.tensor as tt
-from celerite2.theano import terms, GaussianProcess
+
+import pytensor.tensor as pt
+from celerite2.pymc import GaussianProcess, terms
+import pymc as pm
+import pymc_ext as pmx
+import arviz as az
+
 from gls import Gls
 from scipy.stats import norm, kstest
 
 from scipy.signal import savgol_filter
-
 import misc_functions as misc
 
 import wotan as w
@@ -106,7 +108,7 @@ def build_model_SHO(bjd, fnorm, efnorm, Prot):
     
     with pm.Model() as model:
         # Fitting a lightcurve mean
-        mean = pm.Normal("mean", mu=0, sd=10)
+        mean = pm.Normal("mean", mu=0, sigma=10)
         
         # Transit jitter and GP parameters
         # Spread of initial Data
@@ -123,16 +125,16 @@ def build_model_SHO(bjd, fnorm, efnorm, Prot):
 
         # GP model for the light curve
         kernel = terms.SHOTerm(
-            sigma=tt.exp(log_sigma_gp),
-            rho=tt.exp(log_rho_gp),
-            tau=tt.exp(log_tau_gp))
+            sigma=pm.math.exp(log_sigma_gp),
+            rho=pm.math.exp(log_rho_gp),
+            tau=pm.math.exp(log_tau_gp))
         
-        gp = GaussianProcess(kernel, t=bjd, yerr=tt.exp(log_sigma_lc))
+        gp = GaussianProcess(kernel, t=bjd, yerr=pm.math.exp(log_sigma_lc))
         gp.marginal("gp", observed=fnorm)
         pm.Deterministic("pred", gp.predict(fnorm))
         
-        start = model.test_point
-        map_soln = pmx.optimize(start=start,
+        # start = model.test_point
+        map_soln = pmx.optimize(#start=start,
                                 vars=[log_sigma_lc, log_sigma_gp, 
                                       log_rho_gp, log_tau_gp])
         map_soln = pmx.optimize(start=map_soln, vars=[mean])
@@ -168,7 +170,7 @@ def build_model_RotationTerm_exoplanet(bjd, fnorm, efnorm, Prot):
             "sigma_rot", **pmx.estimate_inverse_gamma_parameters(1.0, 5.0)
         )
         log_period = pm.Normal("log_period", mu=np.log(Prot), sigma=2.0)
-        period = pm.Deterministic("period", tt.exp(log_period))
+        period = pm.Deterministic("period", pm.math.exp(log_period))
         log_Q0 = pm.HalfNormal("log_Q0", sigma=2.0)
         log_dQ = pm.Normal("log_dQ", mu=0.0, sigma=2.0)
         f = pm.Uniform("f", lower=0.1, upper=1.0)
@@ -177,14 +179,14 @@ def build_model_RotationTerm_exoplanet(bjd, fnorm, efnorm, Prot):
         kernel = terms.RotationTerm(
             sigma=sigma_rot,
             period=period,
-            Q0=tt.exp(log_Q0),
-            dQ=tt.exp(log_dQ),
+            Q0=pm.math.exp(log_Q0),
+            dQ=pm.math.exp(log_dQ),
             f=f)
         kernel += terms.SHOTerm(sigma=sigma, rho=rho, Q=1 / 3.0)
         gp = GaussianProcess(
             kernel,
             t=bjd,
-            diag=efnorm**2 + tt.exp(2 * log_jitter),
+            diag=efnorm**2 + pm.math.exp(2 * log_jitter),
             mean=mean,
             quiet=True)
 
@@ -219,9 +221,9 @@ def build_model_RotationTerm(bjd, fnorm, efnorm, Prot):
         
         # Quantifying measurement uncertainty
         log_sigma_lc = pm.Normal("log_sigma_lc", 
-                                 mu=np.log(np.median(efnorm)), sd=0.1)
+                                 mu=np.log(np.median(efnorm)), sigma=0.1)
         # Period Fit
-        log_rho_gp = pm.Normal("log_rho_gp", mu=np.log(Prot), sd=0.01)
+        log_rho_gp = pm.Normal("log_rho_gp", mu=np.log(Prot), sigma=0.01)
         
         # Quality Parameters for the oscillators
         Q0 = pm.Normal("Q0", mu=7.5, sigma=2) 
@@ -232,24 +234,24 @@ def build_model_RotationTerm(bjd, fnorm, efnorm, Prot):
         f = pm.Uniform("f", lower=0.8, upper=1)
         
         # Make the kernel
-        kernel = terms.RotationTerm(sigma=tt.exp(log_sigma_gp),
-                                    period=tt.exp(log_rho_gp),
+        kernel = terms.RotationTerm(sigma=pm.math.exp(log_sigma_gp),
+                                    period=pm.math.exp(log_rho_gp),
                                     Q0=Q0,
-                                    dQ=tt.exp(log_dQ),
+                                    dQ=pm.math.exp(log_dQ),
                                     f=f)
 
         gp = GaussianProcess(kernel, 
                              t=bjd, 
-                             yerr=tt.exp(log_sigma_lc),
-                             # diag = efnorm**2 + tt.exp(2*log_jitter),
+                             yerr=pm.math.exp(log_sigma_lc),
+                             # diag = efnorm**2 + pm.math.exp(2*log_jitter),
                              # mean=mean
                              )
         
         gp.marginal("gp", observed=fnorm)
         pm.Deterministic("pred", gp.predict(fnorm))
         
-        start = model.test_point
-        map_soln = pmx.optimize(start=start)
+        # start = model.test_point
+        map_soln = pmx.optimize()#start=start)
     
     return map_soln
         
